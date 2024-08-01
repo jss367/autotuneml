@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any, Dict
 
 import numpy as np
+import optuna
 import pandas as pd
 from hyperopt import STATUS_OK, Trials, fmin, hp, space_eval, tpe
 from hyperopt.pyll.base import scope
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 model_spaces = {
     'xgboost': {
         'model': XGBClassifier,
-        'space': {
+        'hyperopt_space': {
             'max_depth': scope.int(hp.quniform("max_depth", 3, 18, 1)),
             'gamma': hp.uniform('gamma', 1, 9),
             'reg_alpha': hp.quniform('reg_alpha', 40, 180, 1),
@@ -32,12 +33,21 @@ model_spaces = {
             'min_child_weight': hp.quniform('min_child_weight', 0, 10, 1),
             'n_estimators': 180,
             'seed': 0,
-            'eval_metric': 'logloss',
+        },
+        'optuna_space': {
+            'max_depth': lambda trial: trial.suggest_int("max_depth", 3, 18),
+            'gamma': lambda trial: trial.suggest_float('gamma', 1, 9),
+            'reg_alpha': lambda trial: trial.suggest_float('reg_alpha', 40, 180),
+            'reg_lambda': lambda trial: trial.suggest_float('reg_lambda', 0, 1),
+            'colsample_bytree': lambda trial: trial.suggest_float('colsample_bytree', 0.5, 1),
+            'min_child_weight': lambda trial: trial.suggest_float('min_child_weight', 0, 10),
+            'n_estimators': 180,
+            'seed': 0,
         },
     },
     'random_forest': {
         'model': RandomForestClassifier,
-        'space': {
+        'hyperopt_space': {
             "n_estimators": scope.int(hp.quniform("n_estimators", 10, 700, 1)),
             "criterion": hp.choice("criterion", ["gini", "entropy"]),
             "max_depth": scope.int(hp.quniform('max_depth', 1, 100, 1)),
@@ -46,14 +56,29 @@ model_spaces = {
             "max_features": hp.choice('max_features', ['sqrt', 'log2']),
             "random_state": 42,
         },
+        'optuna_space': {
+            "n_estimators": lambda trial: trial.suggest_int("n_estimators", 10, 700),
+            "criterion": lambda trial: trial.suggest_categorical("criterion", ["gini", "entropy"]),
+            "max_depth": lambda trial: trial.suggest_int('max_depth', 1, 100),
+            "min_samples_split": lambda trial: trial.suggest_int('min_samples_split', 2, 20),
+            "min_samples_leaf": lambda trial: trial.suggest_int('min_samples_leaf', 1, 10),
+            "max_features": lambda trial: trial.suggest_categorical('max_features', ['sqrt', 'log2']),
+            "random_state": 42,
+        },
     },
     'logistic_regression': {
         'model': LogisticRegression,
-        'space': {
+        'hyperopt_space': {
             'C': hp.loguniform('C', -4, 4),
             'penalty': hp.choice('penalty', ['l1', 'l2']),
             'solver': hp.choice('solver', ['liblinear', 'saga']),
             'max_iter': scope.int(hp.quniform('max_iter', 100, 1000, 100)),
+        },
+        'optuna_space': {
+            'C': lambda trial: trial.suggest_loguniform('C', 1e-4, 1e4),
+            'penalty': lambda trial: trial.suggest_categorical('penalty', ['l1', 'l2']),
+            'solver': lambda trial: trial.suggest_categorical('solver', ['liblinear', 'saga']),
+            'max_iter': lambda trial: trial.suggest_int('max_iter', 100, 1000, 100),
         },
     },
 }
@@ -114,21 +139,24 @@ def train_model(params: Dict[str, Any], model_class, X_train, y_train, X_test, y
         accuracy = accuracy_score(y_test, pred)
         logger.info(f"Achieved accuracy: {accuracy}")
         return {'loss': -accuracy, 'status': STATUS_OK}
+
     except Exception as e:
         logger.error(f"Error during model training: {str(e)}")
-        return {'status': STATUS_OK, 'loss': np.inf}
+        return {'status': STATUS_OK, 'loss': np.inf}  # change status?
 
 
 def run_hyperopt(model_name: str, X_train, y_train, X_test, y_test, num_trials: int = 50):
-    logger.info(f"Starting hyperparameter optimization for {model_name}")
+    logger.info(f"Starting Hyperopt optimization for {model_name}")
     model_info = model_spaces[model_name]
     trials = Trials()
 
-    fmin_function = lambda params: train_model(params, model_info['model'], X_train, y_train, X_test, y_test)
+    def objective(params):
+        accuracy = train_model(params, model_info['model'], X_train, y_train, X_test, y_test)
+        return {'loss': -accuracy, 'status': STATUS_OK}
 
     try:
         best = fmin(
-            fn=fmin_function,
+            fn=objective,
             space=model_info['space'],
             algo=tpe.suggest,
             max_evals=num_trials,
@@ -139,10 +167,11 @@ def run_hyperopt(model_name: str, X_train, y_train, X_test, y_test, num_trials: 
         best_hyperparams = space_eval(model_info['space'], best)
         logger.info(f"Best hyperparameters for {model_name}: {best_hyperparams}")
 
-        return best_hyperparams
     except Exception as e:
         logger.error(f"Error during hyperparameter optimization: {str(e)}")
         raise
+
+    return best_hyperparams
 
 
 def train_and_evaluate(model_name: str, best_hyperparams: Dict[str, Any], X_train, y_train, X_test, y_test):
