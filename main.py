@@ -275,7 +275,7 @@ def run_hyperopt(model_name: str, X_train, y_train, X_test, y_test, problem_type
     return best_hyperparams
 
 
-def train_and_evaluate(
+def train_and_evaluate_best_params(
     model_name: str, best_hyperparams: Dict[str, Any], X_train, y_train, X_test, y_test, problem_type: str
 ):
     logger.info(f"Training final {model_name} model with best hyperparameters")
@@ -293,12 +293,12 @@ def train_and_evaluate(
             mse = mean_squared_error(y_test, preds)
             r2 = r2_score(y_test, preds)
             logger.info(f"Final model performance - MSE: {mse}, R2 Score: {r2}")
-            return {'model': model_name, 'mse': mse, 'r2': r2, **best_hyperparams}
+            return {'model': model_name, 'mse': mse, 'r2': r2, **best_hyperparams}, learn
         else:
             accuracy = accuracy_score(y_test, preds.argmax(dim=1))
             f1 = f1_score(y_test, preds.argmax(dim=1), average='weighted')
             logger.info(f"Final model performance - Accuracy: {accuracy}, F1 Score: {f1}")
-            return {'model': model_name, 'accuracy': accuracy, 'f1': f1, **best_hyperparams}
+            return {'model': model_name, 'accuracy': accuracy, 'f1': f1, **best_hyperparams}, learn
     else:
         # Sklearn and XGBoost training and evaluation
         model_class = model_info['classifier'] if problem_type == 'classification' else model_info['regressor']
@@ -309,16 +309,15 @@ def train_and_evaluate(
             mse = mean_squared_error(y_test, preds)
             r2 = r2_score(y_test, preds)
             logger.info(f"Final model performance - MSE: {mse}, R2 Score: {r2}")
-            return {'model': model_name, 'mse': mse, 'r2': r2, **best_hyperparams}
+            return {'model': model_name, 'mse': mse, 'r2': r2, **best_hyperparams}, model
         else:
             accuracy = accuracy_score(y_test, preds)
             f1 = f1_score(y_test, preds, average='weighted')
             logger.info(f"Final model performance - Accuracy: {accuracy}, F1 Score: {f1}")
-            return {'model': model_name, 'accuracy': accuracy, 'f1': f1, **best_hyperparams}
+            return {'model': model_name, 'accuracy': accuracy, 'f1': f1, **best_hyperparams}, model
 
 
-def save_results(results: Dict[str, Any]):
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+def save_results(results: Dict[str, Any], timestamp: str):
     filename = f"results/{results['model']}_results_{timestamp}.csv"
     try:
         logger.info(f"Saving results to {filename}")
@@ -331,15 +330,18 @@ def save_results(results: Dict[str, Any]):
         logger.error(f"Error saving results to {filename}: {str(e)}")
 
 
-def save_model(model, model_name: str):
+def save_model(model, model_name: str, timestamp: str):
     os.makedirs('models', exist_ok=True)
-    joblib.dump(model, f'models/best_{model_name.lower()}.joblib')
+    model_filename = f'models/best_{model_name.lower()}_{timestamp}.joblib'
+    joblib.dump(model, model_filename)
+    logger.info(f"Model saved successfully to {model_filename}")
 
 
 def main(args):
     os.makedirs('results', exist_ok=True)
 
     config = load_config('configs/config.yaml')
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     for model_name in args.models:
         try:
@@ -351,8 +353,8 @@ def main(args):
                     args.problem_type,
                 )
                 results, model = train_fastai_with_optuna(data, args.problem_type, config, args.num_trials)
-                save_results(results)
-                save_model(model, model_name)
+                save_results(results, timestamp)
+                save_model(model, model_name, timestamp)
 
             else:
                 X_train, X_test, y_train, y_test = load_and_prepare_data(
@@ -365,13 +367,13 @@ def main(args):
                 best_hyperparams = run_hyperopt(
                     model_name, X_train, y_train, X_test, y_test, args.problem_type, args.num_trials
                 )
-                results, model = train_and_evaluate(
+                results, model = train_and_evaluate_best_params(
                     model_name, best_hyperparams, X_train, y_train, X_test, y_test, args.problem_type
                 )
                 save_results(results)
                 save_model(model, model_name)
 
-            print(f"Best {model_name} model has been saved in the 'models' directory.")
+            logger.info(f"Best {model_name} model has been saved in the 'models' directory.")
         except Exception as e:
             logger.error(f"Failed to optimize and train {model_name}: {str(e)}")
 

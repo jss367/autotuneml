@@ -12,12 +12,9 @@ from fastai.tabular.all import (
     Normalize,
     RegressionBlock,
     TabularPandas,
-    accuracy,
-    cont_cat_split,
-    rmse,
-    tabular_config,
-    tabular_learner,
 )
+from fastai.tabular.all import accuracy as fai_accuracy
+from fastai.tabular.all import cont_cat_split, rmse, tabular_config, tabular_learner
 from sklearn.metrics import accuracy_score, f1_score, mean_squared_error, r2_score
 
 from log_config import logger
@@ -107,7 +104,7 @@ def fastai_objective(trial, data, problem_type, config):
     dls = data.dataloaders(bs=bs)
 
     config = tabular_config(ps=ps, embed_p=embed_p)
-    metrics = [accuracy] if problem_type == 'classification' else [rmse]
+    metrics = [fai_accuracy] if problem_type == 'classification' else [rmse]
     learn = tabular_learner(dls, layers=layers, config=config, metrics=metrics)
 
     try:
@@ -140,7 +137,7 @@ def train_fastai_with_optuna(data, problem_type, config, n_trials=50):
     dls = data.dataloaders(bs=best_params['bs'])
     layers = [best_params[f'layer_{i}'] for i in range(best_params['n_layers'])]
     config = tabular_config(ps=best_params['ps'], embed_p=best_params['embed_p'])
-    metrics = [accuracy] if problem_type == 'classification' else [rmse]
+    metrics = [fai_accuracy] if problem_type == 'classification' else [rmse]
     learn = tabular_learner(dls, layers=layers, config=config, metrics=metrics)
     learn.fit_one_cycle(
         10, best_params['lr'], cbs=[EarlyStoppingCallback(monitor='valid_loss', min_delta=0.01, patience=3)]
@@ -166,7 +163,7 @@ def train_fastai(data):
     batch_size = 64
     dls = data.dataloaders(bs=batch_size)
 
-    learn = tabular_learner(dls, layers=[200, 100], metrics=[accuracy])
+    learn = tabular_learner(dls, layers=[200, 100], metrics=[fai_accuracy])
 
     learn.fit_one_cycle(4, 1e-2)
 

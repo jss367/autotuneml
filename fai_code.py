@@ -1,3 +1,6 @@
+from fastai.torch_core import TensorBase
+
+
 class Transform(metaclass=_TfmMeta):
     "Delegates (`__call__`,`decode`,`setup`) to (<code>encodes</code>,<code>decodes</code>,<code>setups</code>) if `split_idx` matches"
     split_idx, init_enc, order, train_setup = None, None, 0, None
@@ -100,3 +103,16 @@ class Categorify(TabularProc):
 
     def __getitem__(self, k):
         return self.classes[k]
+
+
+def flatten_check(inp, targ):
+    "Check that `inp` and `targ` have the same number of elements and flatten them."
+    inp, targ = TensorBase(inp.contiguous()).view(-1), TensorBase(targ.contiguous()).view(-1)
+    test_eq(len(inp), len(targ))
+    return inp, targ
+
+
+def accuracy(inp, targ, axis=-1):
+    "Compute accuracy with `targ` when `pred` is bs * n_classes"
+    pred, targ = flatten_check(inp.argmax(dim=axis), targ)
+    return (pred == targ).float().mean()
