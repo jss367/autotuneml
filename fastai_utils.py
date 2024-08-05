@@ -7,22 +7,16 @@ import pandas as pd
 from fastai.tabular.all import *
 from hyperopt import STATUS_FAIL, STATUS_OK, Trials, fmin, hp, space_eval, tpe
 from hyperopt.pyll.base import scope
-from pyxtend import struct
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.metrics import accuracy_score, f1_score, mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from xgboost import XGBClassifier, XGBRegressor
 
+from log_config import logger
+
 
 def load_fastai_data(
     path: str,
-    target: str,
-    split_method: str,
-    logger,
-    test_size: float = 0.25,
-    random_state: int = 42,
 ):
     """
     This doesn't split the data anymore
@@ -31,31 +25,24 @@ def load_fastai_data(
     df = pd.read_csv(path, parse_dates=['Date'])
     logger.info(f"Raw data shape: {df.shape}")
 
-    if target not in df.columns:
-        raise ValueError(f"Target variable '{target}' not found in the dataset.")
-
     return df
 
 
 def load_and_prepare_fastai_data(
     path: str,
     target: str,
-    split_method: str,
     problem_type: str,
-    logger,
-    test_size: float = 0.25,
-    random_state: int = 42,
 ):
     df = load_fastai_data(
         path,
-        target,
-        split_method,
-        logger,
-        test_size,
-        random_state,
     )
 
-    return prepare_fastai_data(df, target, problem_type)
+    if target not in df.columns:
+        raise ValueError(f"Target variable '{target}' not found in the dataset.")
+
+    data = prepare_fastai_data(df, target, problem_type)
+
+    return data
 
 
 def prepare_fastai_data(df: pd.DataFrame, target: str, problem_type: str):
@@ -93,12 +80,39 @@ def prepare_fastai_data(df: pd.DataFrame, target: str, problem_type: str):
         splits=date_splits,
     )
 
-    return data, df[target]
+    return data
+
+
+def fastai_objective(trial, data, problem_type):
+    # Define the hyperparameters to optimize
+    layers = trial.suggest_categorical('layers', [[200, 100], [500, 200], [1000, 500, 200]])
+    emb_drop = trial.suggest_float('emb_drop', 0, 0.5)
+    ps = trial.suggest_float('ps', 0, 0.5)
+    bs = trial.suggest_categorical('bs', [32, 64, 128, 256])
+
+    # Create the DataLoaders
+    dls = data.dataloaders(bs=bs)
+
+    # Create and train the model
+    learn = tabular_learner(
+        dls, layers=layers, emb_drop=emb_drop, ps=ps, metrics=accuracy if problem_type == 'classification' else rmse
+    )
+    learn.fit_one_cycle(5)
+
+    # Evaluate the model
+    if problem_type == 'classification':
+        preds, _ = learn.get_preds(dl=dls.valid)
+        acc = accuracy_score(dls.valid.y.items, preds.argmax(dim=1))
+        return -acc  # Optuna minimizes the objective, so we return negative accuracy
+    else:
+        preds, _ = learn.get_preds(dl=dls.valid)
+        mse = mean_squared_error(dls.valid.y.items, preds)
+        return mse
 
 
 def train_fastai_with_optuna(data, problem_type, n_trials=50):
     study = optuna.create_study(direction='minimize')
-    study.optimize(lambda trial: objective(trial, data, problem_type), n_trials=n_trials)
+    study.optimize(lambda trial: fastai_objective(trial, data, problem_type), n_trials=n_trials)
 
     best_params = study.best_params
     logger.info(f"Best hyperparameters: {best_params}")
@@ -130,3 +144,17 @@ def train_fastai_with_optuna(data, problem_type, n_trials=50):
         results = {'model': 'fastai_tabular', 'mse': mse, 'r2': r2, **best_params}
 
     return results, learn
+
+
+def train_fastai(data):
+    batch_size = 64
+    dls = data.dataloaders(bs=batch_size)
+
+    learn = tabular_learner(dls, layers=[200, 100], metrics=[accuracy])
+
+    learn.fit_one_cycle(4, 1e-2)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"models/model_{timestamp}.pkl"
+    os.makedirs('models', exist_ok=True)
+    learn.export(filename)

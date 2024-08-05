@@ -20,11 +20,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from xgboost import XGBClassifier, XGBRegressor
 
-from fastai_utils import load_and_prepare_fastai_data, load_fastai_data, prepare_fastai_data
-
-# Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+from fastai_utils import load_and_prepare_fastai_data, prepare_fastai_data, train_fastai_with_optuna
+from log_config import logger
 
 # Define model spaces
 model_spaces = {
@@ -304,20 +301,6 @@ def save_results(results: Dict[str, Any]):
         logger.error(f"Error saving results to {filename}: {str(e)}")
 
 
-def train_fastai(data):
-    batch_size = 64
-    dls = data.dataloaders(bs=batch_size)
-
-    learn = tabular_learner(dls, layers=[200, 100], metrics=[accuracy])
-
-    learn.fit_one_cycle(4, 1e-2)
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"models/model_{timestamp}.pkl"
-    os.makedirs('models', exist_ok=True)
-    learn.export(filename)
-
-
 def main(args):
     os.makedirs('results', exist_ok=True)
 
@@ -325,18 +308,14 @@ def main(args):
         try:
             is_fastai = model_name == 'fastai_tabular'
             if is_fastai:
-                X_train, df_target = load_and_prepare_fastai_data(
+                data = load_and_prepare_fastai_data(
                     args.data_path,
                     args.target,
-                    args.split_method,
                     args.problem_type,
-                    logger,
-                    args.test_size,
-                    args.random_state,
                 )
 
                 # if is_fastai, don't use optimization
-                train_fastai(X_train)
+                train_fastai_with_optuna(data, args.problem_type)
 
             else:
                 X_train, X_test, y_train, y_test = load_and_prepare_data()
