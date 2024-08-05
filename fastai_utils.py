@@ -7,6 +7,7 @@ import yaml
 from fastai.tabular.all import (
     Categorify,
     CategoryBlock,
+    EarlyStoppingCallback,
     FillMissing,
     Normalize,
     RegressionBlock,
@@ -22,7 +23,7 @@ from sklearn.metrics import accuracy_score, f1_score, mean_squared_error, r2_sco
 from log_config import logger
 
 
-def load_config(config_path='config.yaml'):
+def load_config(config_path='configs/config.yaml'):
     with open(config_path, 'r') as file:
         return yaml.safe_load(file)
 
@@ -95,7 +96,12 @@ def fastai_objective(trial, data, problem_type, config):
 
     ps = trial.suggest_float('ps', *fastai_config['ps'])
     bs = trial.suggest_categorical('bs', fastai_config['bs'])
-    lr = trial.suggest_float('lr', fastai_config['lr'][0], fastai_config['lr'][1], log=True)
+
+    lr_range = fastai_config['lr']
+    lr_low = float(lr_range[0])
+    lr_high = float(lr_range[1])
+    lr = trial.suggest_float('lr', lr_low, lr_high, log=True)
+
     embed_p = trial.suggest_float('embed_p', *fastai_config['embed_p'])
 
     dls = data.dataloaders(bs=bs)
@@ -103,15 +109,22 @@ def fastai_objective(trial, data, problem_type, config):
     config = tabular_config(ps=ps, embed_p=embed_p)
     metrics = [accuracy] if problem_type == 'classification' else [rmse]
     learn = tabular_learner(dls, layers=layers, config=config, metrics=metrics)
-    learn.fit_one_cycle(10, lr)
+
+    try:
+        learn.fit_one_cycle(10, lr, cbs=[EarlyStoppingCallback(monitor='valid_loss', min_delta=0.01, patience=3)])
+    except Exception as e:
+        print(f"Training failed with error: {str(e)}")
+        return float('inf')  # Return a large value to indicate failure
 
     # Evaluate the model
     preds, targets = learn.get_preds(dl=dls.valid)
     if problem_type == 'classification':
         acc = accuracy_score(targets.numpy(), preds.argmax(dim=1).numpy())
+        print(f"Trial accuracy: {acc}")
         return -acc  # Optuna minimizes the objective, so we return negative accuracy
     else:
         mse = mean_squared_error(targets.numpy(), preds.numpy())
+        print(f"Trial MSE: {mse}")
         return mse
 
 
@@ -123,19 +136,18 @@ def train_fastai_with_optuna(data, problem_type, config, n_trials=50):
     best_params = study.best_params
     logger.info(f"Best hyperparameters: {best_params}")
 
-    # Reconstruct the layers from the best parameters
-    layers = [best_params[f'layer_{i}'] for i in range(best_params['n_layers'])]
-
     # Train the final model with the best parameters
     dls = data.dataloaders(bs=best_params['bs'])
+    layers = [best_params[f'layer_{i}'] for i in range(best_params['n_layers'])]
     config = tabular_config(ps=best_params['ps'], embed_p=best_params['embed_p'])
     metrics = [accuracy] if problem_type == 'classification' else [rmse]
     learn = tabular_learner(dls, layers=layers, config=config, metrics=metrics)
-    learn.fit_one_cycle(5)
+    learn.fit_one_cycle(
+        10, best_params['lr'], cbs=[EarlyStoppingCallback(monitor='valid_loss', min_delta=0.01, patience=3)]
+    )
 
     # Evaluate the final model
     preds, targets = learn.get_preds(dl=dls.valid)
-
     if problem_type == 'classification':
         accuracy = accuracy_score(targets.numpy(), preds.argmax(dim=1).numpy())
         f1 = f1_score(targets.numpy(), preds.argmax(dim=1).numpy(), average='weighted')
