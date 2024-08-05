@@ -32,12 +32,31 @@ def train_model(params: Dict[str, Any], model_class, X_train, X_test, y_train, y
         return {'loss': np.inf, 'status': STATUS_FAIL, 'error': str(e)}
 
 
+def convert_config_to_hyperopt_space(config_space):
+    hyperopt_space = {}
+    for param, value in config_space.items():
+        if isinstance(value, list):
+            if len(value) == 2:
+                if all(isinstance(v, int) for v in value):
+                    hyperopt_space[param] = hp.quniform(param, value[0], value[1], 1)
+                elif all(isinstance(v, float) for v in value):
+                    hyperopt_space[param] = hp.uniform(param, value[0], value[1])
+            elif len(value) > 2:
+                hyperopt_space[param] = hp.choice(param, value)
+        elif isinstance(value, (int, float)):
+            hyperopt_space[param] = value
+    return hyperopt_space
+
+
 def run_hyperopt(
     model_name: str, X_train, y_train, X_test, y_test, problem_type: str, num_trials: int = 50, optim_config=None
 ):
     logger.info(f"Starting Hyperopt optimization for {model_name}")
     model_info = optim_config.model_spaces[model_name]
     trials = Trials()
+
+    # Convert the config space to Hyperopt space
+    hyperopt_space = convert_config_to_hyperopt_space(model_info.hyperopt_space)
 
     def objective(params):
         try:
@@ -53,14 +72,14 @@ def run_hyperopt(
     try:
         best = fmin(
             fn=objective,
-            space=model_info['hyperopt_space'],
+            space=hyperopt_space,
             algo=tpe.suggest,
             max_evals=num_trials,
             trials=trials,
             show_progressbar=False,
         )
 
-        best_hyperparams = space_eval(model_info['hyperopt_space'], best)
+        best_hyperparams = space_eval(hyperopt_space, best)
         logger.info(f"Best hyperparameters for {model_name}: {best_hyperparams}")
 
         logger.info(f"Completed {len(trials.trials)} trials for {model_name}")
