@@ -22,8 +22,8 @@ from sklearn.metrics import accuracy_score, f1_score, mean_squared_error, r2_sco
 from log_config import logger
 
 
-def load_config():
-    with open('config.yaml', 'r') as file:
+def load_config(config_path='config.yaml'):
+    with open(config_path, 'r') as file:
         return yaml.safe_load(file)
 
 
@@ -115,10 +115,10 @@ def fastai_objective(trial, data, problem_type, config):
         return mse
 
 
-def train_fastai_with_optuna(data, problem_type, n_trials=50):
+def train_fastai_with_optuna(data, problem_type, config, n_trials=50):
     logger.info("Starting FastAI training with Optuna")
     study = optuna.create_study(direction='minimize')
-    study.optimize(lambda trial: fastai_objective(trial, data, problem_type), n_trials=n_trials)
+    study.optimize(lambda trial: fastai_objective(trial, data, problem_type, config), n_trials=n_trials)
 
     best_params = study.best_params
     logger.info(f"Best hyperparameters: {best_params}")

@@ -1,6 +1,5 @@
 import argparse
 import csv
-import logging
 import os
 from datetime import datetime
 from typing import Any, Dict, Tuple, Union
@@ -20,7 +19,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from xgboost import XGBClassifier, XGBRegressor
 
-from fastai_utils import load_and_prepare_fastai_data, prepare_fastai_data, train_fastai_with_optuna
+from fastai_utils import load_and_prepare_fastai_data, load_config, prepare_fastai_data, train_fastai_with_optuna
 from log_config import logger
 
 # Define model spaces
@@ -304,6 +303,8 @@ def save_results(results: Dict[str, Any]):
 def main(args):
     os.makedirs('results', exist_ok=True)
 
+    config = load_config('config.yaml')
+
     for model_name in args.models:
         try:
             is_fastai = model_name == 'fastai_tabular'
@@ -313,7 +314,7 @@ def main(args):
                     args.target,
                     args.problem_type,
                 )
-                results, model = train_fastai_with_optuna(data, args.problem_type, args.num_trials)
+                results, model = train_fastai_with_optuna(data, args.problem_type, config, args.num_trials)
                 save_results(results)
 
             else:
