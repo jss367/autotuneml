@@ -157,14 +157,14 @@ def run_hyperopt(model_name: str, X_train, y_train, X_test, y_test, num_trials: 
     try:
         best = fmin(
             fn=objective,
-            space=model_info['space'],
+            space=model_info['hyperopt_space'],
             algo=tpe.suggest,
             max_evals=num_trials,
             trials=trials,
             show_progressbar=False,
         )
 
-        best_hyperparams = space_eval(model_info['space'], best)
+        best_hyperparams = space_eval(model_info['hyperopt_space'], best)
         logger.info(f"Best hyperparameters for {model_name}: {best_hyperparams}")
 
     except Exception as e:
@@ -222,7 +222,7 @@ if __name__ == "__main__":
         default=['xgboost', 'random_forest', 'logistic_regression'],
         help="List of models to train and evaluate",
     )
-    parser.add_argument("--num_trials", type=int, default=50, help="Number of trials for hyperparameter optimization")
+    parser.add_argument("--num_trials", type=int, default=10, help="Number of trials for hyperparameter optimization")
     parser.add_argument(
         "--test_size", type=float, default=0.25, help="Proportion of the dataset to include in the test split"
     )
