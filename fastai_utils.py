@@ -78,7 +78,11 @@ def prepare_fastai_data(df: pd.DataFrame, target: str, problem_type: str):
 
 def fastai_objective(trial, data, problem_type):
     # Define the hyperparameters to optimize
-    layers = trial.suggest_categorical('layers', [(200, 100), (500, 200), (1000, 500, 200)])
+    n_layers = trial.suggest_int('n_layers', 2, 3)
+    layers = []
+    for i in range(n_layers):
+        layers.append(trial.suggest_int(f'layer_{i}', 50, 1000))
+
     ps = trial.suggest_float('ps', 0, 0.5)
     bs = trial.suggest_categorical('bs', (32, 64, 128, 256))
 
@@ -88,7 +92,7 @@ def fastai_objective(trial, data, problem_type):
     # Create and train the model
     config = tabular_config(ps=ps, embed_p=trial.suggest_float('embed_p', 0, 0.5))
     metrics = [accuracy] if problem_type == 'classification' else [rmse]
-    learn = tabular_learner(dls, layers=list(layers), config=config, metrics=metrics)
+    learn = tabular_learner(dls, layers=layers, config=config, metrics=metrics)
     learn.fit_one_cycle(5)
 
     # Evaluate the model
@@ -109,11 +113,14 @@ def train_fastai_with_optuna(data, problem_type, n_trials=50):
     best_params = study.best_params
     logger.info(f"Best hyperparameters: {best_params}")
 
+    # Reconstruct the layers from the best parameters
+    layers = [best_params[f'layer_{i}'] for i in range(best_params['n_layers'])]
+
     # Train the final model with the best parameters
     dls = data.dataloaders(bs=best_params['bs'])
     config = tabular_config(ps=best_params['ps'], embed_p=best_params['embed_p'])
     metrics = [accuracy] if problem_type == 'classification' else [rmse]
-    learn = tabular_learner(dls, layers=list(best_params['layers']), config=config, metrics=metrics)
+    learn = tabular_learner(dls, layers=layers, config=config, metrics=metrics)
     learn.fit_one_cycle(5)
 
     # Evaluate the final model
