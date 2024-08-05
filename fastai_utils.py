@@ -3,6 +3,7 @@ from datetime import datetime
 
 import optuna
 import pandas as pd
+import yaml
 from fastai.tabular.all import (
     Categorify,
     CategoryBlock,
@@ -19,6 +20,14 @@ from fastai.tabular.all import (
 from sklearn.metrics import accuracy_score, f1_score, mean_squared_error, r2_score
 
 from log_config import logger
+
+
+def load_config():
+    with open('config.yaml', 'r') as file:
+        return yaml.safe_load(file)
+
+
+config = load_config()
 
 
 def load_and_prepare_fastai_data(
@@ -76,24 +85,25 @@ def prepare_fastai_data(df: pd.DataFrame, target: str, problem_type: str):
     return data
 
 
-def fastai_objective(trial, data, problem_type):
-    # Define the hyperparameters to optimize
-    n_layers = trial.suggest_int('n_layers', 2, 3)
+def fastai_objective(trial, data, problem_type, config):
+    fastai_config = config['model_spaces']['fastai_tabular']['hyperopt_space']
+
+    n_layers = trial.suggest_int('n_layers', *fastai_config['n_layers'])
     layers = []
     for i in range(n_layers):
-        layers.append(trial.suggest_int(f'layer_{i}', 50, 1000))
+        layers.append(trial.suggest_int(f'layer_{i}', *fastai_config['layer_size']))
 
-    ps = trial.suggest_float('ps', 0, 0.5)
-    bs = trial.suggest_categorical('bs', (32, 64, 128, 256))
+    ps = trial.suggest_float('ps', *fastai_config['ps'])
+    bs = trial.suggest_categorical('bs', fastai_config['bs'])
+    lr = trial.suggest_loguniform('lr', *fastai_config['lr'])
+    embed_p = trial.suggest_float('embed_p', *fastai_config['embed_p'])
 
-    # Create the DataLoaders
     dls = data.dataloaders(bs=bs)
 
-    # Create and train the model
-    config = tabular_config(ps=ps, embed_p=trial.suggest_float('embed_p', 0, 0.5))
+    config = tabular_config(ps=ps, embed_p=embed_p)
     metrics = [accuracy] if problem_type == 'classification' else [rmse]
     learn = tabular_learner(dls, layers=layers, config=config, metrics=metrics)
-    learn.fit_one_cycle(5)
+    learn.fit_one_cycle(10, lr)
 
     # Evaluate the model
     preds, targets = learn.get_preds(dl=dls.valid)
