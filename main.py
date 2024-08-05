@@ -174,6 +174,10 @@ def load_and_prepare_data(
         return X_train, X_test, y_train, y_test
 
 
+from fastai.tabular.all import *
+from sklearn.metrics import accuracy_score, mean_squared_error
+
+
 def train_model(params: Dict[str, Any], model_class, X_train, y_train, X_test, y_test):
     logger.info(f"Training {model_class.__name__} with params: {params}")
     try:
@@ -188,16 +192,23 @@ def train_model(params: Dict[str, Any], model_class, X_train, y_train, X_test, y
             model = tabular_learner(dls, layers=params['layers'], emb_drop=params['emb_drop'], ps=params['ps'])
             model.fit_one_cycle(5)  # You might want to make the number of epochs configurable
             preds, _ = model.get_preds(dl=dls.test_dl(X_test))
-            mse = mean_squared_error(y_test, preds)
+            loss = mean_squared_error(y_test, preds)
         else:
             # Sklearn and XGBoost training
             model = model_class(**params)
             model.fit(X_train, y_train)
             preds = model.predict(X_test)
-            mse = mean_squared_error(y_test, preds)
 
-        logger.info(f"Achieved MSE: {mse}")
-        return {'loss': mse, 'status': STATUS_OK}
+            # Check if it's a classifier or regressor
+            if hasattr(model, "predict_proba"):
+                # It's a classifier
+                loss = 1 - accuracy_score(y_test, preds)
+            else:
+                # It's a regressor
+                loss = mean_squared_error(y_test, preds)
+
+        logger.info(f"Achieved loss: {loss}")
+        return {'loss': loss, 'status': STATUS_OK}
 
     except Exception as e:
         logger.error(f"Error during model training: {str(e)}")
@@ -211,7 +222,7 @@ def run_hyperopt(model_name: str, X_train, y_train, X_test, y_test, num_trials: 
 
     def objective(params):
         result = train_model(params, model_info['model'], X_train, y_train, X_test, y_test)
-        return result['loss']  # Return only the loss value
+        return result
 
     try:
         best = fmin(
@@ -225,6 +236,13 @@ def run_hyperopt(model_name: str, X_train, y_train, X_test, y_test, num_trials: 
 
         best_hyperparams = space_eval(model_info['hyperopt_space'], best)
         logger.info(f"Best hyperparameters for {model_name}: {best_hyperparams}")
+
+        # Log the number of trials completed
+        logger.info(f"Completed {len(trials.trials)} trials for {model_name}")
+
+        # Log the best score achieved
+        best_score = min([t['result']['loss'] for t in trials.trials])
+        logger.info(f"Best score achieved for {model_name}: {best_score}")
 
     except Exception as e:
         logger.error(f"Error during hyperparameter optimization: {str(e)}")
