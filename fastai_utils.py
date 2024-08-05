@@ -1,16 +1,22 @@
-from typing import Any, Dict, Tuple, Union
+import os
+from datetime import datetime
 
-import dill
-import numpy as np
 import optuna
 import pandas as pd
-from fastai.tabular.all import *
-from hyperopt import STATUS_FAIL, STATUS_OK, Trials, fmin, hp, space_eval, tpe
-from hyperopt.pyll.base import scope
+from fastai.tabular.all import (
+    Categorify,
+    CategoryBlock,
+    FillMissing,
+    Normalize,
+    RegressionBlock,
+    TabularPandas,
+    accuracy,
+    cont_cat_split,
+    rmse,
+    tabular_config,
+    tabular_learner,
+)
 from sklearn.metrics import accuracy_score, f1_score, mean_squared_error, r2_score
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
-from xgboost import XGBClassifier, XGBRegressor
 
 from log_config import logger
 
@@ -72,18 +78,17 @@ def prepare_fastai_data(df: pd.DataFrame, target: str, problem_type: str):
 
 def fastai_objective(trial, data, problem_type):
     # Define the hyperparameters to optimize
-    layers = trial.suggest_categorical('layers', [[200, 100], [500, 200], [1000, 500, 200]])
+    layers = trial.suggest_categorical('layers', [(200, 100), (500, 200), (1000, 500, 200)])
     ps = trial.suggest_float('ps', 0, 0.5)
-    bs = trial.suggest_categorical('bs', [32, 64, 128, 256])
+    bs = trial.suggest_categorical('bs', (32, 64, 128, 256))
 
     # Create the DataLoaders
     dls = data.dataloaders(bs=bs)
 
     # Create and train the model
     config = tabular_config(ps=ps, embed_p=trial.suggest_float('embed_p', 0, 0.5))
-    learn = tabular_learner(
-        dls, layers=layers, config=config, metrics=accuracy if problem_type == 'classification' else rmse
-    )
+    metrics = [accuracy] if problem_type == 'classification' else [rmse]
+    learn = tabular_learner(dls, layers=list(layers), config=config, metrics=metrics)
     learn.fit_one_cycle(5)
 
     # Evaluate the model
@@ -107,9 +112,8 @@ def train_fastai_with_optuna(data, problem_type, n_trials=50):
     # Train the final model with the best parameters
     dls = data.dataloaders(bs=best_params['bs'])
     config = tabular_config(ps=best_params['ps'], embed_p=best_params['embed_p'])
-    learn = tabular_learner(
-        dls, layers=best_params['layers'], config=config, metrics=accuracy if problem_type == 'classification' else rmse
-    )
+    metrics = [accuracy] if problem_type == 'classification' else [rmse]
+    learn = tabular_learner(dls, layers=list(best_params['layers']), config=config, metrics=metrics)
     learn.fit_one_cycle(5)
 
     # Evaluate the final model
