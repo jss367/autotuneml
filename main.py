@@ -5,12 +5,14 @@ import os
 from datetime import datetime
 from typing import Any, Dict, Tuple, Union
 
+import dill
 import numpy as np
 import optuna
 import pandas as pd
 from fastai.tabular.all import *
 from hyperopt import STATUS_FAIL, STATUS_OK, Trials, fmin, hp, space_eval, tpe
 from hyperopt.pyll.base import scope
+from pyxtend import struct
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.metrics import accuracy_score, f1_score, mean_squared_error, r2_score
@@ -146,14 +148,13 @@ def load_and_split_data(
 def prepare_fastai_data(
     train_df: pd.DataFrame, test_df: pd.DataFrame, target: str, problem_type: str
 ) -> Tuple[TabularPandas, TabularPandas, pd.Series, pd.Series]:
-    cat_cols = train_df.select_dtypes(include=['object', 'category']).columns.tolist()
-    cont_cols = train_df.select_dtypes(include=['int64', 'float64']).columns.tolist()
-    if target in cont_cols:
-        cont_cols.remove(target)
-    if 'Date' in cont_cols:
-        cont_cols.remove('Date')
+    """
+    We're assuming the data has already been split into test and train
+    """
 
-    procs = [Categorify, FillMissing, Normalize]
+    continuous_vars, categorical_vars = cont_cat_split(train_df, dep_var=target)
+
+    preprocessing = [Categorify, FillMissing, Normalize]
 
     if problem_type == 'regression':
         y_block = RegressionBlock()
@@ -161,10 +162,22 @@ def prepare_fastai_data(
         y_block = CategoryBlock()
 
     train_data = TabularPandas(
-        train_df, procs=procs, cat_names=cat_cols, cont_names=cont_cols, y_names=target, y_block=y_block, splits=None
+        train_df,
+        procs=preprocessing,
+        cat_names=categorical_vars,
+        cont_names=continuous_vars,
+        y_names=target,
+        y_block=y_block,
+        splits=None,
     )
     test_data = TabularPandas(
-        test_df, procs=procs, cat_names=cat_cols, cont_names=cont_cols, y_names=target, y_block=y_block, splits=None
+        test_df,
+        procs=preprocessing,
+        cat_names=categorical_vars,
+        cont_names=continuous_vars,
+        y_names=target,
+        y_block=y_block,
+        splits=None,
     )
     return train_data, test_data, train_df[target], test_df[target]
 
@@ -210,10 +223,11 @@ def train_model(params: Dict[str, Any], model_class, X_train, y_train, X_test, y
         if model_class == tabular_learner:
             # FastAI specific training
             dls = X_train.dataloaders(bs=params['bs'])
-            model = tabular_learner(dls, layers=list(params['layers']), emb_drop=params['emb_drop'], ps=params['ps'])
-            model.fit_one_cycle(5)
-            test_dl = model.dls.test_dl(X_test)
-            preds, _ = model.get_preds(dl=test_dl)
+
+            learn = tabular_learner(dls, layers=list(params['layers']))
+            learn.fit_one_cycle(5)
+            test_dl = learn.dls.test_dl(X_test)
+            preds, _ = learn.get_preds(dl=test_dl)
             if problem_type == 'regression':
                 loss = mean_squared_error(y_test, preds)
             else:
@@ -286,12 +300,11 @@ def train_and_evaluate(
     if model_name == 'fastai_tabular':
         # FastAI specific training and evaluation
         dls = X_train.dataloaders(bs=best_hyperparams['bs'])
-        model = tabular_learner(
-            dls, layers=best_hyperparams['layers'], emb_drop=best_hyperparams['emb_drop'], ps=best_hyperparams['ps']
-        )
-        model.fit_one_cycle(5)
-        test_dl = model.dls.test_dl(X_test)
-        preds, _ = model.get_preds(dl=test_dl)
+
+        learn = tabular_learner(dls)
+        learn.fit_one_cycle(5)
+        test_dl = learn.dls.test_dl(X_test)
+        preds, _ = learn.get_preds(dl=test_dl)
         if problem_type == 'regression':
             mse = mean_squared_error(y_test, preds)
             r2 = r2_score(y_test, preds)
@@ -334,6 +347,21 @@ def save_results(results: Dict[str, Any]):
         logger.error(f"Error saving results to {filename}: {str(e)}")
 
 
+def train_fastai(train_df_wrapper):
+
+    batch_size = 8  # 128
+    dls = train_df_wrapper.dataloaders(bs=batch_size)
+
+    learn = tabular_learner(dls, layers=[20, 10])
+
+    learn.fit(4, 1e-2)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"models/model_{timestamp}.pkl"
+    os.makedirs('results', exist_ok=True)
+    learn.export(filename, pickle_module=dill)
+
+
 def main(args):
     os.makedirs('results', exist_ok=True)
 
@@ -350,13 +378,18 @@ def main(args):
                 is_fastai,
             )
 
-            best_hyperparams = run_hyperopt(
-                model_name, X_train, y_train, X_test, y_test, args.problem_type, args.num_trials
-            )
-            results = train_and_evaluate(
-                model_name, best_hyperparams, X_train, y_train, X_test, y_test, args.problem_type
-            )
-            save_results(results)
+            if is_fastai:
+                # if is_fastai, don't use optimization
+                train_fastai(X_train)
+
+            else:
+                best_hyperparams = run_hyperopt(
+                    model_name, X_train, y_train, X_test, y_test, args.problem_type, args.num_trials
+                )
+                results = train_and_evaluate(
+                    model_name, best_hyperparams, X_train, y_train, X_test, y_test, args.problem_type
+                )
+                save_results(results)
         except Exception as e:
             logger.error(f"Failed to optimize and train {model_name}: {str(e)}")
 
