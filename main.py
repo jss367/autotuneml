@@ -2,20 +2,20 @@ import argparse
 import csv
 import logging
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Union
 
 import numpy as np
 import optuna
 import pandas as pd
+from fastai.tabular.all import *
 from hyperopt import STATUS_OK, Trials, fmin, hp, space_eval, tpe
 from hyperopt.pyll.base import scope
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, f1_score
+from sklearn.metrics import accuracy_score, f1_score, mean_squared_error
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from xgboost import XGBClassifier
-from fastai.tabular.all import *
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -85,21 +85,27 @@ model_spaces = {
     'fastai_tabular': {
         'model': tabular_learner,
         'hyperopt_space': {
-            'layers': hp.choice('layers', [
-                [200, 100],
-                [500, 200],
-                [1000, 500, 200],
-            ]),
+            'layers': hp.choice(
+                'layers',
+                [
+                    [200, 100],
+                    [500, 200],
+                    [1000, 500, 200],
+                ],
+            ),
             'emb_drop': hp.uniform('emb_drop', 0, 0.5),
             'ps': hp.uniform('ps', 0, 0.5),
             'bs': scope.int(hp.quniform('bs', 32, 256, 32)),
         },
         'optuna_space': {
-            'layers': lambda trial: trial.suggest_categorical('layers', [
-                [200, 100],
-                [500, 200],
-                [1000, 500, 200],
-            ]),
+            'layers': lambda trial: trial.suggest_categorical(
+                'layers',
+                [
+                    [200, 100],
+                    [500, 200],
+                    [1000, 500, 200],
+                ],
+            ),
             'emb_drop': lambda trial: trial.suggest_float('emb_drop', 0, 0.5),
             'ps': lambda trial: trial.suggest_float('ps', 0, 0.5),
             'bs': lambda trial: trial.suggest_int('bs', 32, 256, 32),
@@ -109,14 +115,23 @@ model_spaces = {
 
 
 def load_and_prepare_data(
-    path: str, target: str, split_method: str, test_size: float = 0.25, random_state: int = 42
-) -> tuple[pd.DataFrame, pd.DataFrame, np.ndarray, np.ndarray]:
+    path: str, target: str, split_method: str, test_size: float = 0.25, random_state: int = 42, is_fastai: bool = False
+) -> Union[
+    tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series], tuple[TabularPandas, TabularPandas, pd.Series, pd.Series]
+]:
     logger.info(f"Loading data from {path}")
     df = pd.read_csv(path, parse_dates=['Date'])
     logger.info(f"Raw data shape: {df.shape}")
 
     if target not in df.columns:
         raise ValueError(f"Target variable '{target}' not found in the dataset.")
+
+    # Identify categorical and continuous columns
+    cat_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
+    cont_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
+    cont_cols.remove(target)  # Remove target from continuous columns
+    if 'Date' in cont_cols:
+        cont_cols.remove('Date')  # Remove Date from continuous columns
 
     if split_method == 'date':
         # Sort the dataframe by date
@@ -130,43 +145,63 @@ def load_and_prepare_data(
 
         train_df = df[df['Date'] < split_date]
         test_df = df[df['Date'] >= split_date]
-
-        X_train = train_df.drop([target, 'Date'], axis=1)
-        X_test = test_df.drop([target, 'Date'], axis=1)
-        y_train = train_df[target]
-        y_test = test_df[target]
     else:
         logger.info(f"Splitting data randomly with test_size={test_size}")
-        X = df.drop([target, 'Date'], axis=1)
-        y = df[target]
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)
+        train_df, test_df = train_test_split(df, test_size=test_size, random_state=random_state)
 
-    le = LabelEncoder()
-    y_train = le.fit_transform(y_train)
-    y_test = le.transform(y_test)
-
-    logger.info(f"Data prepared. Train set shape: {X_train.shape}, Test set shape: {X_test.shape}")
+    logger.info(f"Data prepared. Train set shape: {train_df.shape}, Test set shape: {test_df.shape}")
 
     if split_method == 'date':
         logger.info(f"Train date range: {train_df['Date'].min()} to {train_df['Date'].max()}")
         logger.info(f"Test date range: {test_df['Date'].min()} to {test_df['Date'].max()}")
 
-    return X_train, X_test, y_train, y_test
+    if is_fastai:
+        # Create FastAI TabularPandas objects
+        procs = [Categorify, FillMissing, Normalize]
+        train_data = TabularPandas(
+            train_df, procs=procs, cat_names=cat_cols, cont_names=cont_cols, y_names=target, splits=None
+        )
+        test_data = TabularPandas(
+            test_df, procs=procs, cat_names=cat_cols, cont_names=cont_cols, y_names=target, splits=None
+        )
+        return train_data, test_data, train_df[target], test_df[target]
+    else:
+        # Return pandas DataFrames for non-FastAI models
+        X_train = train_df.drop([target, 'Date'], axis=1)
+        X_test = test_df.drop([target, 'Date'], axis=1)
+        y_train = train_df[target]
+        y_test = test_df[target]
+        return X_train, X_test, y_train, y_test
 
 
 def train_model(params: Dict[str, Any], model_class, X_train, y_train, X_test, y_test):
     logger.info(f"Training {model_class.__name__} with params: {params}")
     try:
-        model = model_class(**params)
-        model.fit(X_train, y_train)
-        pred = model.predict(X_test)
-        accuracy = accuracy_score(y_test, pred)
-        logger.info(f"Achieved accuracy: {accuracy}")
-        return {'loss': -accuracy, 'status': STATUS_OK}
+        if model_class == tabular_learner:
+            # FastAI specific training
+            procs = [Categorify, FillMissing, Normalize]
+            cont_names = X_train.select_dtypes(include=['int64', 'float64']).columns.tolist()
+            cat_names = X_train.select_dtypes(include=['object', 'category']).columns.tolist()
+            dls = TabularDataLoaders.from_df(
+                X_train, y_name='r_posn', cat_names=cat_names, cont_names=cont_names, procs=procs, bs=params['bs']
+            )
+            model = tabular_learner(dls, layers=params['layers'], emb_drop=params['emb_drop'], ps=params['ps'])
+            model.fit_one_cycle(5)  # You might want to make the number of epochs configurable
+            preds, _ = model.get_preds(dl=dls.test_dl(X_test))
+            mse = mean_squared_error(y_test, preds)
+        else:
+            # Sklearn and XGBoost training
+            model = model_class(**params)
+            model.fit(X_train, y_train)
+            preds = model.predict(X_test)
+            mse = mean_squared_error(y_test, preds)
+
+        logger.info(f"Achieved MSE: {mse}")
+        return {'loss': mse, 'status': STATUS_OK}
 
     except Exception as e:
         logger.error(f"Error during model training: {str(e)}")
-        return {'status': STATUS_OK, 'loss': np.inf}  # change status?
+        return {'status': STATUS_OK, 'loss': np.inf}
 
 
 def run_hyperopt(model_name: str, X_train, y_train, X_test, y_test, num_trials: int = 50):
@@ -175,8 +210,8 @@ def run_hyperopt(model_name: str, X_train, y_train, X_test, y_test, num_trials: 
     trials = Trials()
 
     def objective(params):
-        accuracy = train_model(params, model_info['model'], X_train, y_train, X_test, y_test)
-        return {'loss': -accuracy, 'status': STATUS_OK}
+        result = train_model(params, model_info['model'], X_train, y_train, X_test, y_test)
+        return result['loss']  # Return only the loss value
 
     try:
         best = fmin(
@@ -221,12 +256,17 @@ def save_results(results: Dict[str, Any]):
 
 
 def main(args):
-    X_train, X_test, y_train, y_test = load_and_prepare_data(
-        args.data_path, args.target, args.split_method, args.test_size, args.random_state
-    )
-
     for model_name in args.models:
         try:
+            is_fastai = model_name == 'fastai_tabular'
+            data = load_and_prepare_data(
+                args.data_path, args.target, args.split_method, args.test_size, args.random_state, is_fastai
+            )
+            if is_fastai:
+                X_train, X_test, y_train, y_test = data
+            else:
+                X_train, X_test, y_train, y_test = data
+
             best_hyperparams = run_hyperopt(model_name, X_train, y_train, X_test, y_test, args.num_trials)
             results = train_and_evaluate(model_name, best_hyperparams, X_train, y_train, X_test, y_test)
             save_results(results)
@@ -243,7 +283,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--models",
         nargs='+',
-        default=['xgboost', 'random_forest', 'logistic_regression'],
+        default=['xgboost', 'random_forest', 'logistic_regression', 'fastai_tabular'],
         help="List of models to train and evaluate",
     )
     parser.add_argument("--num_trials", type=int, default=10, help="Number of trials for hyperparameter optimization")
