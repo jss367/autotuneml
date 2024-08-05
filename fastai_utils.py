@@ -15,27 +15,14 @@ from xgboost import XGBClassifier, XGBRegressor
 from log_config import logger
 
 
-def load_fastai_data(
-    path: str,
-):
-    """
-    This doesn't split the data anymore
-    """
-    logger.info(f"Loading data from {path}")
-    df = pd.read_csv(path, parse_dates=['Date'])
-    logger.info(f"Raw data shape: {df.shape}")
-
-    return df
-
-
 def load_and_prepare_fastai_data(
     path: str,
     target: str,
     problem_type: str,
 ):
-    df = load_fastai_data(
-        path,
-    )
+    logger.info(f"Loading data from {path}")
+    df = pd.read_csv(path, parse_dates=['Date'])
+    logger.info(f"Raw data shape: {df.shape}")
 
     if target not in df.columns:
         raise ValueError(f"Target variable '{target}' not found in the dataset.")
