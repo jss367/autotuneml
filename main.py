@@ -313,9 +313,8 @@ def main(args):
                     args.target,
                     args.problem_type,
                 )
-
-                # if is_fastai, don't use optimization
-                train_fastai_with_optuna(data, args.problem_type)
+                results, model = train_fastai_with_optuna(data, args.problem_type, args.num_trials)
+                save_results(results)
 
             else:
                 X_train, X_test, y_train, y_test = load_and_prepare_data()

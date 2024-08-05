@@ -87,13 +87,12 @@ def fastai_objective(trial, data, problem_type):
     learn.fit_one_cycle(5)
 
     # Evaluate the model
+    preds, targets = learn.get_preds(dl=dls.valid)
     if problem_type == 'classification':
-        preds, _ = learn.get_preds(dl=dls.valid)
-        acc = accuracy_score(dls.valid.y.items, preds.argmax(dim=1))
+        acc = accuracy_score(targets.numpy(), preds.argmax(dim=1).numpy())
         return -acc  # Optuna minimizes the objective, so we return negative accuracy
     else:
-        preds, _ = learn.get_preds(dl=dls.valid)
-        mse = mean_squared_error(dls.valid.y.items, preds)
+        mse = mean_squared_error(targets.numpy(), preds.numpy())
         return mse
 
 
@@ -114,17 +113,16 @@ def train_fastai_with_optuna(data, problem_type, n_trials=50):
     learn.fit_one_cycle(5)
 
     # Evaluate the final model
-    test_dl = learn.dls.test_dl(data.all_df)
-    preds, _ = learn.get_preds(dl=test_dl)
+    preds, targets = learn.get_preds(dl=dls.valid)
 
     if problem_type == 'classification':
-        accuracy = accuracy_score(data.y.items, preds.argmax(dim=1))
-        f1 = f1_score(data.y.items, preds.argmax(dim=1), average='weighted')
+        accuracy = accuracy_score(targets.numpy(), preds.argmax(dim=1).numpy())
+        f1 = f1_score(targets.numpy(), preds.argmax(dim=1).numpy(), average='weighted')
         logger.info(f"Final model performance - Accuracy: {accuracy}, F1 Score: {f1}")
         results = {'model': 'fastai_tabular', 'accuracy': accuracy, 'f1': f1, **best_params}
     else:
-        mse = mean_squared_error(data.y.items, preds)
-        r2 = r2_score(data.y.items, preds)
+        mse = mean_squared_error(targets.numpy(), preds.numpy())
+        r2 = r2_score(targets.numpy(), preds.numpy())
         logger.info(f"Final model performance - MSE: {mse}, R2 Score: {r2}")
         results = {'model': 'fastai_tabular', 'mse': mse, 'r2': r2, **best_params}
 
