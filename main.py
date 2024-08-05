@@ -1,6 +1,7 @@
 import argparse
 import csv
 import os
+import sys
 from datetime import datetime
 from typing import Any, Dict, Tuple, Union
 
@@ -353,7 +354,7 @@ def main(args):
                     run_config['problem_type'],
                 )
                 results, model = train_fastai_with_optuna(
-                    data, args.problem_type, optim_config, run_config['num_trials']
+                    data, run_config['problem_type'], optim_config, run_config['num_trials']
                 )
                 save_results(results, timestamp)
                 save_model(model, model_name, timestamp)
@@ -375,7 +376,10 @@ def main(args):
 
             logger.info(f"Best {model_name} model has been saved in the 'models' directory.")
         except Exception as e:
-            logger.error(f"Failed to optimize and train {model_name}: {str(e)}")
+            _, _, exc_tb = sys.exc_info()
+            file_name = exc_tb.tb_frame.f_code.co_filename
+            line_number = exc_tb.tb_lineno
+            logger.error(f"Failed to optimize and train {model_name}: {str(e)} in {file_name}, line {line_number}")
 
     logger.info("Process completed")
 
