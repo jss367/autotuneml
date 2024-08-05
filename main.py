@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any, Dict, Tuple, Union
 
 import dill
+import joblib
 import numpy as np
 import optuna
 import pandas as pd
@@ -330,6 +331,11 @@ def save_results(results: Dict[str, Any]):
         logger.error(f"Error saving results to {filename}: {str(e)}")
 
 
+def save_model(model, model_name: str):
+    os.makedirs('models', exist_ok=True)
+    joblib.dump(model, f'models/best_{model_name.lower()}.joblib')
+
+
 def main(args):
     os.makedirs('results', exist_ok=True)
 
@@ -346,6 +352,7 @@ def main(args):
                 )
                 results, model = train_fastai_with_optuna(data, args.problem_type, config, args.num_trials)
                 save_results(results)
+                save_model(model, model_name)
 
             else:
                 X_train, X_test, y_train, y_test = load_and_prepare_data(
@@ -358,10 +365,13 @@ def main(args):
                 best_hyperparams = run_hyperopt(
                     model_name, X_train, y_train, X_test, y_test, args.problem_type, args.num_trials
                 )
-                results = train_and_evaluate(
+                results, model = train_and_evaluate(
                     model_name, best_hyperparams, X_train, y_train, X_test, y_test, args.problem_type
                 )
                 save_results(results)
+                save_model(model, model_name)
+
+            print(f"Best {model_name} model has been saved in the 'models' directory.")
         except Exception as e:
             logger.error(f"Failed to optimize and train {model_name}: {str(e)}")
 
