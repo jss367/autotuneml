@@ -2,9 +2,9 @@
 
 # Model Selection
 models:
-  - xgboost
-  - random_forest
-  - linear
+  # - xgboost
+  # - random_forest
+  # - linear
   - fastai_tabular
 
 # Hyperparameter Optimization

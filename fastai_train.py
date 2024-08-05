@@ -20,11 +20,6 @@ from sklearn.metrics import accuracy_score, f1_score, mean_squared_error, r2_sco
 from log_config import logger
 
 
-def load_config(config_path):
-    with open(config_path, 'r') as file:
-        return yaml.safe_load(file)
-
-
 def load_and_prepare_fastai_data(
     path: str,
     target: str,
@@ -80,8 +75,8 @@ def prepare_fastai_data(df: pd.DataFrame, target: str, problem_type: str):
     return data
 
 
-def fastai_objective(trial, data, problem_type, config):
-    fastai_config = config['model_spaces']['fastai_tabular']['hyperopt_space']
+def fastai_objective(trial, data, problem_type, hyperparam_config):
+    fastai_config = hyperparam_config['model_spaces']['fastai_tabular']['hyperopt_space']
 
     n_layers = trial.suggest_int('n_layers', *fastai_config['n_layers'])
     layers = []
@@ -100,12 +95,14 @@ def fastai_objective(trial, data, problem_type, config):
 
     dls = data.dataloaders(bs=bs)
 
-    config = tabular_config(ps=ps, embed_p=embed_p)
+    hyperparam_config = tabular_config(ps=ps, embed_p=embed_p)
     metrics = [fai_accuracy] if problem_type == 'classification' else [rmse]
-    learn = tabular_learner(dls, layers=layers, config=config, metrics=metrics)
+    learn = tabular_learner(dls, layers=layers, config=hyperparam_config, metrics=metrics)
 
     try:
-        learn.fit_one_cycle(10, lr, cbs=[EarlyStoppingCallback(monitor='valid_loss', min_delta=0.01, patience=3)])
+        # Use the epochs from the config
+        epochs = fastai_config['epochs']
+        learn.fit_one_cycle(epochs, lr, cbs=[EarlyStoppingCallback(monitor='valid_loss', min_delta=0.01, patience=3)])
     except Exception as e:
         print(f"Training failed with error: {str(e)}")
         return float('inf')  # Return a large value to indicate failure
@@ -122,10 +119,13 @@ def fastai_objective(trial, data, problem_type, config):
         return mse
 
 
-def train_fastai_with_optuna(data, problem_type, config, n_trials=50):
+def train_fastai_with_optuna(data, run_config, optim_config):
     logger.info("Starting FastAI training with Optuna")
     study = optuna.create_study(direction='minimize')
-    study.optimize(lambda trial: fastai_objective(trial, data, problem_type, config), n_trials=n_trials)
+    study.optimize(
+        lambda trial: fastai_objective(trial, data, run_config.problem_type, optim_config),
+        n_trials=run_config.num_trials,
+    )
 
     best_params = study.best_params
     logger.info(f"Best hyperparameters: {best_params}")
@@ -134,15 +134,18 @@ def train_fastai_with_optuna(data, problem_type, config, n_trials=50):
     dls = data.dataloaders(bs=best_params['bs'])
     layers = [best_params[f'layer_{i}'] for i in range(best_params['n_layers'])]
     config = tabular_config(ps=best_params['ps'], embed_p=best_params['embed_p'])
-    metrics = [fai_accuracy] if problem_type == 'classification' else [rmse]
+    metrics = [fai_accuracy] if run_config.problem_type == 'classification' else [rmse]
     learn = tabular_learner(dls, layers=layers, config=config, metrics=metrics)
+
+    # Use the epochs from the config
+    epochs = optim_config['model_spaces']['fastai_tabular']['hyperopt_space']['epochs']
     learn.fit_one_cycle(
-        10, best_params['lr'], cbs=[EarlyStoppingCallback(monitor='valid_loss', min_delta=0.01, patience=3)]
+        epochs, best_params['lr'], cbs=[EarlyStoppingCallback(monitor='valid_loss', min_delta=0.01, patience=3)]
     )
 
     # Evaluate the final model
     preds, targets = learn.get_preds(dl=dls.valid)
-    if problem_type == 'classification':
+    if run_config.problem_type == 'classification':
         accuracy = accuracy_score(targets.numpy(), preds.argmax(dim=1).numpy())
         f1 = f1_score(targets.numpy(), preds.argmax(dim=1).numpy(), average='weighted')
         logger.info(f"Final model performance - Accuracy: {accuracy}, F1 Score: {f1}")

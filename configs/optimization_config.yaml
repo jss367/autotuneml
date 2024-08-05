@@ -31,3 +31,4 @@ model_spaces:
       bs: [16, 32, 64, 128, 256]
       lr: [1e-5, 1e-1]
       embed_p: [0, 0.5]
+      epochs: 3
