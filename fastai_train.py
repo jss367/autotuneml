@@ -134,9 +134,7 @@ def train_fastai_with_optuna(data, run_config, optim_config):
     config = tabular_config(ps=best_params['ps'], embed_p=best_params['embed_p'])
     metrics = [fai_accuracy] if run_config.problem_type == 'classification' else [rmse]
     learn = tabular_learner(dls, layers=layers, config=config, metrics=metrics)
-
-    # Use the epochs from the config
-    epochs = optim_config['model_spaces']['fastai_tabular']['hyperopt_space']['epochs']
+    epochs = best_params['epochs']
     learn.fit_one_cycle(
         epochs, best_params['lr'], cbs=[EarlyStoppingCallback(monitor='valid_loss', min_delta=0.01, patience=3)]
     )
