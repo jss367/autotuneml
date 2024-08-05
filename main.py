@@ -8,12 +8,10 @@ from typing import Any, Dict, Tuple, Union
 
 import dill
 import joblib
-import numpy as np
 import optuna
 import pandas as pd
 import yaml
 from fastai.tabular.all import TabularPandas
-from hyperopt import STATUS_FAIL, STATUS_OK, Trials, fmin, hp, space_eval, tpe
 from hyperopt.pyll.base import scope
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
@@ -21,101 +19,6 @@ from sklearn.preprocessing import LabelEncoder
 from fastai_train import load_and_prepare_fastai_data, prepare_fastai_data, train_fastai_with_optuna
 from log_config import logger
 from skl_train import run_hyperopt, train_and_evaluate_best_params
-
-Define model spaces
-model_spaces = {
-    'xgboost': {
-        'classifier': XGBClassifier,
-        'regressor': XGBRegressor,
-        'hyperopt_space': {
-            'max_depth': scope.int(hp.quniform("max_depth", 3, 18, 1)),
-            'gamma': hp.uniform('gamma', 1, 9),
-            'reg_alpha': hp.quniform('reg_alpha', 40, 180, 1),
-            'reg_lambda': hp.uniform('reg_lambda', 0, 1),
-            'colsample_bytree': hp.uniform('colsample_bytree', 0.5, 1),
-            'min_child_weight': hp.quniform('min_child_weight', 0, 10, 1),
-            'n_estimators': 180,
-            'seed': 0,
-        },
-        'optuna_space': {
-            'max_depth': lambda trial: trial.suggest_int("max_depth", 3, 18),
-            'gamma': lambda trial: trial.suggest_float('gamma', 1, 9),
-            'reg_alpha': lambda trial: trial.suggest_float('reg_alpha', 40, 180),
-            'reg_lambda': lambda trial: trial.suggest_float('reg_lambda', 0, 1),
-            'colsample_bytree': lambda trial: trial.suggest_float('colsample_bytree', 0.5, 1),
-            'min_child_weight': lambda trial: trial.suggest_float('min_child_weight', 0, 10),
-            'n_estimators': 180,
-            'seed': 0,
-        },
-    },
-    'random_forest': {
-        'classifier': RandomForestClassifier,
-        'regressor': RandomForestRegressor,
-        'hyperopt_space': {
-            "n_estimators": scope.int(hp.quniform("n_estimators", 10, 700, 1)),
-            "max_depth": scope.int(hp.quniform('max_depth', 1, 100, 1)),
-            "min_samples_split": scope.int(hp.quniform('min_samples_split', 2, 20, 1)),
-            "min_samples_leaf": scope.int(hp.quniform('min_samples_leaf', 1, 10, 1)),
-            "max_features": hp.choice('max_features', ['sqrt', 'log2']),
-            "random_state": 42,
-        },
-        'optuna_space': {
-            "n_estimators": lambda trial: trial.suggest_int("n_estimators", 10, 700),
-            "criterion": lambda trial: trial.suggest_categorical("criterion", ["gini", "entropy"]),
-            "max_depth": lambda trial: trial.suggest_int('max_depth', 1, 100),
-            "min_samples_split": lambda trial: trial.suggest_int('min_samples_split', 2, 20),
-            "min_samples_leaf": lambda trial: trial.suggest_int('min_samples_leaf', 1, 10),
-            "max_features": lambda trial: trial.suggest_categorical('max_features', ['sqrt', 'log2']),
-            "random_state": 42,
-        },
-    },
-    'linear': {
-        'classifier': LogisticRegression,
-        'regressor': LinearRegression,
-        'hyperopt_space': {
-            'C': hp.loguniform('C', -4, 4),
-            'penalty': hp.choice('penalty', ['l1', 'l2']),
-            'solver': hp.choice('solver', ['liblinear', 'saga']),
-            'max_iter': scope.int(hp.quniform('max_iter', 100, 1000, 100)),
-        },
-        'optuna_space': {
-            'C': lambda trial: trial.suggest_loguniform('C', 1e-4, 1e4),
-            'penalty': lambda trial: trial.suggest_categorical('penalty', ['l1', 'l2']),
-            'solver': lambda trial: trial.suggest_categorical('solver', ['liblinear', 'saga']),
-            'max_iter': lambda trial: trial.suggest_int('max_iter', 100, 1000, 100),
-        },
-    },
-    'fastai_tabular': {
-        'classifier': tabular_learner,
-        'regressor': tabular_learner,
-        'hyperopt_space': {
-            'layers': hp.choice(
-                'layers',
-                [
-                    [200, 100],
-                    [500, 200],
-                    [1000, 500, 200],
-                ],
-            ),
-            'emb_drop': hp.uniform('emb_drop', 0, 0.5),
-            'ps': hp.uniform('ps', 0, 0.5),
-            'bs': scope.int(hp.quniform('bs', 32, 256, 32)),
-        },
-        'optuna_space': {
-            'layers': lambda trial: trial.suggest_categorical(
-                'layers',
-                [
-                    [200, 100],
-                    [500, 200],
-                    [1000, 500, 200],
-                ],
-            ),
-            'emb_drop': lambda trial: trial.suggest_float('emb_drop', 0, 0.5),
-            'ps': lambda trial: trial.suggest_float('ps', 0, 0.5),
-            'bs': lambda trial: trial.suggest_int('bs', 32, 256, 32),
-        },
-    },
-}
 
 
 class Config(SimpleNamespace):
@@ -282,10 +185,10 @@ def main(args):
                     run_config.problem_type,
                 )
                 best_hyperparams = run_hyperopt(
-                    model_name, X_train, y_train, X_test, y_test, run_config.problem_type, run_config.num_trials
+                    model_name, X_train, y_train, X_test, y_test, run_config.problem_type, run_config.num_trials, optim_config
                 )
                 results, model = train_and_evaluate_best_params(
-                    model_name, best_hyperparams, X_train, y_train, X_test, y_test, run_config.problem_type
+                    model_name, best_hyperparams, X_train, y_train, X_test, y_test, run_config.problem_type, optim_config
                 )
                 save_results(results, timestamp)
                 save_model(model, model_name, timestamp)

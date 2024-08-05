@@ -3,7 +3,6 @@ from datetime import datetime
 
 import optuna
 import pandas as pd
-import yaml
 from fastai.tabular.all import (
     Categorify,
     CategoryBlock,

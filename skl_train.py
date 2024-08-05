@@ -1,57 +1,28 @@
-import argparse
-import csv
-import os
 import sys
-from datetime import datetime
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict
 
-import dill
-import joblib
 import numpy as np
-import optuna
-import pandas as pd
-import yaml
-from fastai.tabular.all import (
-    Categorify,
-    CategoryBlock,
-    EarlyStoppingCallback,
-    FillMissing,
-    Normalize,
-    RegressionBlock,
-    TabularPandas,
-)
-from fastai.tabular.all import accuracy as fai_accuracy
-from fastai.tabular.all import cont_cat_split, rmse, tabular_config, tabular_learner
+from fastai.tabular.all import tabular_learner
 from hyperopt import STATUS_FAIL, STATUS_OK, Trials, fmin, hp, space_eval, tpe
 from hyperopt.pyll.base import scope
 from pyxtend import struct
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.metrics import accuracy_score, f1_score, mean_squared_error, r2_score
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
-from xgboost import XGBClassifier, XGBRegressor
 
-from fastai_train import load_and_prepare_fastai_data, prepare_fastai_data, train_fastai_with_optuna
 from log_config import logger
 
 
-def train_model(params: Dict[str, Any], model_class, X_train, X_test, y_train, y_test, problem_type: str, target: str):
+def train_model(params: Dict[str, Any], model_class, X_train, X_test, y_train, y_test, problem_type: str):
+    """Sklearn and XGBoost training"""
     logger.info(f"Training {model_class.__name__} with params: {params}")
     try:
-        if model_class == tabular_learner:
-            # might remove this
-            # FastAI specific training
-            logger.warn("FastAI not set up for hyperopt")
+
+        model = model_class(**params)
+        model.fit(X_train, y_train)
+        preds = model.predict(X_test)
+        if problem_type == 'classification':
+            loss = 1 - accuracy_score(y_test, preds)
         else:
-            # Sklearn and XGBoost training
-            model = model_class(**params)
-            model.fit(X_train, y_train)
-            preds = model.predict(X_test)
-            if problem_type == 'classification':
-                loss = 1 - accuracy_score(y_test, preds)
-            else:
-                loss = mean_squared_error(y_test, preds)
+            loss = mean_squared_error(y_test, preds)
 
         logger.info(f"Achieved loss: {loss}")
         return {'loss': loss, 'status': STATUS_OK, 'model': model}
@@ -61,16 +32,18 @@ def train_model(params: Dict[str, Any], model_class, X_train, X_test, y_train, y
         return {'loss': np.inf, 'status': STATUS_FAIL, 'error': str(e)}
 
 
-def run_hyperopt(model_name: str, X_train, y_train, X_test, y_test, problem_type: str, num_trials: int = 50, target=''):
+def run_hyperopt(
+    model_name: str, X_train, y_train, X_test, y_test, problem_type: str, num_trials: int = 50, optim_config=None
+):
     logger.info(f"Starting Hyperopt optimization for {model_name}")
-    model_info = model_spaces[model_name]
+    model_info = optim_config.model_spaces[model_name]
     trials = Trials()
 
     def objective(params):
         try:
             logger.info(f"Starting objective function with params: {params}")
             model_class = model_info['classifier'] if problem_type == 'classification' else model_info['regressor']
-            result = train_model(params, model_class, X_train, X_test, y_train, y_test, problem_type, target)
+            result = train_model(params, model_class, X_train, X_test, y_train, y_test, problem_type)
             logger.info(f"Finished objective function. Result: {result}")
             return result
         except Exception as e:
@@ -96,17 +69,20 @@ def run_hyperopt(model_name: str, X_train, y_train, X_test, y_test, problem_type
         logger.info(f"Best score achieved for {model_name}: {best_score}")
 
     except Exception as e:
-        logger.error(f"Error during hyperparameter optimization: {str(e)}")
+        _, _, exc_tb = sys.exc_info()
+        file_name = exc_tb.tb_frame.f_code.co_filename
+        line_number = exc_tb.tb_lineno
+        logger.error(f"Error during hyperparameter optimization: {str(e)} in {file_name}, line {line_number}")
         return None
 
     return best_hyperparams
 
 
 def train_and_evaluate_best_params(
-    model_name: str, best_hyperparams: Dict[str, Any], X_train, y_train, X_test, y_test, problem_type: str
+    model_name: str, best_hyperparams: Dict[str, Any], X_train, y_train, X_test, y_test, problem_type: str, optim_config
 ):
     logger.info(f"Training final {model_name} model with best hyperparameters")
-    model_info = model_spaces[model_name]
+    model_info = optim_config.model_spaces[model_name]
 
     if model_name == 'fastai_tabular':
         # FastAI specific training and evaluation
