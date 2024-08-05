@@ -20,12 +20,9 @@ from sklearn.metrics import accuracy_score, f1_score, mean_squared_error, r2_sco
 from log_config import logger
 
 
-def load_config(config_path='configs/config.yaml'):
+def load_config(config_path):
     with open(config_path, 'r') as file:
         return yaml.safe_load(file)
-
-
-config = load_config()
 
 
 def load_and_prepare_fastai_data(

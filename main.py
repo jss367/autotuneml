@@ -338,40 +338,40 @@ def save_model(model, model_name: str, timestamp: str):
 
 
 def main(args):
-    os.makedirs('results', exist_ok=True)
+    run_config = load_config(args.run_config_path)
+    optim_config = load_config('configs/optimization_config.yaml')
 
-    config = load_config('configs/config.yaml')
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    for model_name in args.models:
+    for model_name in run_config['models']:
         try:
             is_fastai = model_name == 'fastai_tabular'
             if is_fastai:
                 data = load_and_prepare_fastai_data(
                     args.data_path,
                     args.target,
-                    args.problem_type,
+                    run_config['problem_type'],
                 )
-                results, model = train_fastai_with_optuna(data, args.problem_type, config, args.num_trials)
+                results, model = train_fastai_with_optuna(
+                    data, args.problem_type, optim_config, run_config['num_trials']
+                )
                 save_results(results, timestamp)
                 save_model(model, model_name, timestamp)
-
             else:
                 X_train, X_test, y_train, y_test = load_and_prepare_data(
                     args.data_path,
                     args.target,
-                    args.split_method,
-                    args.problem_type,
+                    run_config['split_method'],
+                    run_config['problem_type'],
                 )
-
                 best_hyperparams = run_hyperopt(
-                    model_name, X_train, y_train, X_test, y_test, args.problem_type, args.num_trials
+                    model_name, X_train, y_train, X_test, y_test, run_config['problem_type'], run_config['num_trials']
                 )
                 results, model = train_and_evaluate_best_params(
-                    model_name, best_hyperparams, X_train, y_train, X_test, y_test, args.problem_type
+                    model_name, best_hyperparams, X_train, y_train, X_test, y_test, run_config['problem_type']
                 )
-                save_results(results)
-                save_model(model, model_name)
+                save_results(results, timestamp)
+                save_model(model, model_name, timestamp)
 
             logger.info(f"Best {model_name} model has been saved in the 'models' directory.")
         except Exception as e:
@@ -384,31 +384,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Machine Learning Pipeline with Hyperparameter Optimization")
     parser.add_argument("--data_path", type=str, required=True, help="Path to the input CSV file")
     parser.add_argument("--target", type=str, required=True, help="Name of the target variable column")
-    parser.add_argument(
-        "--models",
-        nargs='+',
-        default=['xgboost', 'random_forest', 'linear', 'fastai_tabular'],
-        help="List of models to train and evaluate",
-    )
-    parser.add_argument("--num_trials", type=int, default=10, help="Number of trials for hyperparameter optimization")
-    parser.add_argument(
-        "--test_size", type=float, default=0.25, help="Proportion of the dataset to include in the test split"
-    )
-    parser.add_argument("--random_state", type=int, default=42, help="Random state for reproducibility")
-    parser.add_argument(
-        "--split_method",
-        type=str,
-        choices=['random', 'date'],
-        default='random',
-        help="Method to split the data into train and test sets",
-    )
-    parser.add_argument(
-        "--problem_type",
-        type=str,
-        choices=['classification', 'regression'],
-        required=True,
-        help="Type of machine learning problem",
-    )
+    parser.add_argument("--run_config_path", type=str, required=True)
 
     args = parser.parse_args()
     main(args)
