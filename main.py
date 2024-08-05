@@ -144,20 +144,27 @@ def load_and_split_data(
 
 
 def prepare_fastai_data(
-    train_df: pd.DataFrame, test_df: pd.DataFrame, target: str, problem_type
+    train_df: pd.DataFrame, test_df: pd.DataFrame, target: str, problem_type: str
 ) -> Tuple[TabularPandas, TabularPandas, pd.Series, pd.Series]:
     cat_cols = train_df.select_dtypes(include=['object', 'category']).columns.tolist()
     cont_cols = train_df.select_dtypes(include=['int64', 'float64']).columns.tolist()
-    cont_cols.remove(target)
+    if target in cont_cols:
+        cont_cols.remove(target)
     if 'Date' in cont_cols:
         cont_cols.remove('Date')
 
     procs = [Categorify, FillMissing, Normalize]
+
+    if problem_type == 'regression':
+        y_block = RegressionBlock()
+    else:
+        y_block = CategoryBlock()
+
     train_data = TabularPandas(
-        train_df, procs=procs, cat_names=cat_cols, cont_names=cont_cols, y_names=target, splits=None
+        train_df, procs=procs, cat_names=cat_cols, cont_names=cont_cols, y_names=target, y_block=y_block, splits=None
     )
     test_data = TabularPandas(
-        test_df, procs=procs, cat_names=cat_cols, cont_names=cont_cols, y_names=target, splits=None
+        test_df, procs=procs, cat_names=cat_cols, cont_names=cont_cols, y_names=target, y_block=y_block, splits=None
     )
     return train_data, test_data, train_df[target], test_df[target]
 
@@ -187,7 +194,7 @@ def load_and_prepare_data(
     random_state: int = 42,
     is_fastai: bool = False,
 ) -> Union[
-    Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series], tuple[TabularPandas, TabularPandas, pd.Series, pd.Series]
+    Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series], Tuple[TabularPandas, TabularPandas, pd.Series, pd.Series]
 ]:
     train_df, test_df = load_and_split_data(path, target, split_method, test_size, random_state)
 
@@ -197,25 +204,20 @@ def load_and_prepare_data(
         return prepare_other_data(train_df, test_df, target, problem_type)
 
 
-def train_model(params: Dict[str, Any], model_class, X_train, y_train, X_test, y_test, problem_type: str, target):
+def train_model(params: Dict[str, Any], model_class, X_train, y_train, X_test, y_test, problem_type: str, target: str):
     logger.info(f"Training {model_class.__name__} with params: {params}")
     try:
         if model_class == tabular_learner:
             # FastAI specific training
-            procs = [Categorify, FillMissing, Normalize]
-            cont_names = X_train.select_dtypes(include=['int64', 'float64']).columns.tolist()
-            cat_names = X_train.select_dtypes(include=['object', 'category']).columns.tolist()
-            dls = TabularDataLoaders.from_df(
-                X_train, y_name=target, cat_names=cat_names, cont_names=cont_names, procs=procs, bs=params['bs']
-            )
+            dls = X_train.dataloaders(bs=params['bs'])
             model = tabular_learner(dls, layers=params['layers'], emb_drop=params['emb_drop'], ps=params['ps'])
             model.fit_one_cycle(5)
-            preds, _ = model.get_preds(dl=dls.test_dl(X_test))
-            loss = (
-                mean_squared_error(y_test, preds)
-                if problem_type == 'regression'
-                else 1 - accuracy_score(y_test, preds.argmax(dim=1))
-            )
+            test_dl = model.dls.test_dl(X_test)
+            preds, _ = model.get_preds(dl=test_dl)
+            if problem_type == 'regression':
+                loss = mean_squared_error(y_test, preds)
+            else:
+                loss = 1 - accuracy_score(y_test, preds.argmax(dim=1))
         else:
             # Sklearn and XGBoost training
             model = model_class(**params)
@@ -283,17 +285,13 @@ def train_and_evaluate(
 
     if model_name == 'fastai_tabular':
         # FastAI specific training and evaluation
-        procs = [Categorify, FillMissing, Normalize]
-        cont_names = X_train.select_dtypes(include=['int64', 'float64']).columns.tolist()
-        cat_names = X_train.select_dtypes(include=['object', 'category']).columns.tolist()
-        dls = TabularDataLoaders.from_df(
-            X_train, y_name='target', cat_names=cat_names, cont_names=cont_names, procs=procs, bs=best_hyperparams['bs']
-        )
+        dls = X_train.dataloaders(bs=best_hyperparams['bs'])
         model = tabular_learner(
             dls, layers=best_hyperparams['layers'], emb_drop=best_hyperparams['emb_drop'], ps=best_hyperparams['ps']
         )
         model.fit_one_cycle(5)
-        preds, _ = model.get_preds(dl=dls.test_dl(X_test))
+        test_dl = model.dls.test_dl(X_test)
+        preds, _ = model.get_preds(dl=test_dl)
         if problem_type == 'regression':
             mse = mean_squared_error(y_test, preds)
             r2 = r2_score(y_test, preds)
