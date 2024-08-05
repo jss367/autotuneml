@@ -95,7 +95,7 @@ def fastai_objective(trial, data, problem_type, config):
 
     ps = trial.suggest_float('ps', *fastai_config['ps'])
     bs = trial.suggest_categorical('bs', fastai_config['bs'])
-    lr = trial.suggest_loguniform('lr', *fastai_config['lr'])
+    lr = trial.suggest_float('lr', fastai_config['lr'][0], fastai_config['lr'][1], log=True)
     embed_p = trial.suggest_float('embed_p', *fastai_config['embed_p'])
 
     dls = data.dataloaders(bs=bs)
