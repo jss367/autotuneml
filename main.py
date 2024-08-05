@@ -210,7 +210,7 @@ def train_model(params: Dict[str, Any], model_class, X_train, y_train, X_test, y
         if model_class == tabular_learner:
             # FastAI specific training
             dls = X_train.dataloaders(bs=params['bs'])
-            model = tabular_learner(dls, layers=params['layers'], emb_drop=params['emb_drop'], ps=params['ps'])
+            model = tabular_learner(dls, layers=list(params['layers']), emb_drop=params['emb_drop'], ps=params['ps'])
             model.fit_one_cycle(5)
             test_dl = model.dls.test_dl(X_test)
             preds, _ = model.get_preds(dl=test_dl)
