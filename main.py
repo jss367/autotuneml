@@ -120,6 +120,34 @@ model_spaces = {
 }
 
 
+def load_fastai_data(
+    path: str, target: str, split_method: str, test_size: float = 0.25, random_state: int = 42
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    This doesn't split the data anymore
+    """
+    logger.info(f"Loading data from {path}")
+    df = pd.read_csv(path, parse_dates=['Date'])
+    logger.info(f"Raw data shape: {df.shape}")
+
+    if target not in df.columns:
+        raise ValueError(f"Target variable '{target}' not found in the dataset.")
+
+    # if split_method == 'date':
+    #     df = df.sort_values('Date')
+    #     split_index = int(len(df) * (1 - test_size))
+    #     split_date = df.iloc[split_index]['Date']
+    #     logger.info(f"Splitting data by date. Split date: {split_date}")
+    #     train_df = df[df['Date'] < split_date]
+    #     test_df = df[df['Date'] >= split_date]
+    # else:
+    #     logger.info(f"Splitting data randomly with test_size={test_size}")
+    #     train_df, test_df = train_test_split(df, test_size=test_size, random_state=random_state)
+
+    # logger.info(f"Data prepared. Train set shape: {train_df.shape}, Test set shape: {test_df.shape}")
+    return df
+
+
 def load_and_split_data(
     path: str, target: str, split_method: str, test_size: float = 0.25, random_state: int = 42
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -145,14 +173,11 @@ def load_and_split_data(
     return train_df, test_df
 
 
-def prepare_fastai_data(
-    train_df: pd.DataFrame, test_df: pd.DataFrame, target: str, problem_type: str
-) -> Tuple[TabularPandas, TabularPandas, pd.Series, pd.Series]:
+def prepare_fastai_data(df: pd.DataFrame, target: str, problem_type: str):
     """
-    We're assuming the data has already been split into test and train
+    This splits the data
     """
-
-    continuous_vars, categorical_vars = cont_cat_split(train_df, dep_var=target)
+    continuous_vars, categorical_vars = cont_cat_split(df, dep_var=target, max_card=20)
 
     preprocessing = [Categorify, FillMissing, Normalize]
 
@@ -161,25 +186,29 @@ def prepare_fastai_data(
     else:
         y_block = CategoryBlock()
 
-    train_data = TabularPandas(
-        train_df,
+    # Assuming 'Date' is the name of your date column
+    def date_splitter(df):
+        """
+        The splitter returns two lists - one of all the training data indices and one of all the validation data indices
+        """
+        train_mask = df['Date'] < pd.to_datetime('1/1/2024')
+        train_indices = df.index[train_mask].tolist()
+        val_indices = df.index[~train_mask].tolist()
+        return train_indices, val_indices
+
+    date_splits = date_splitter(df)
+
+    data = TabularPandas(
+        df,
         procs=preprocessing,
         cat_names=categorical_vars,
         cont_names=continuous_vars,
         y_names=target,
         y_block=y_block,
-        splits=None,
+        splits=date_splits,
     )
-    test_data = TabularPandas(
-        test_df,
-        procs=preprocessing,
-        cat_names=categorical_vars,
-        cont_names=continuous_vars,
-        y_names=target,
-        y_block=y_block,
-        splits=None,
-    )
-    return train_data, test_data, train_df[target], test_df[target]
+
+    return data, df[target]
 
 
 def prepare_other_data(
@@ -196,6 +225,14 @@ def prepare_other_data(
         y_test = le.transform(y_test)
 
     return X_train, X_test, y_train, y_test
+
+
+def load_and_prepare_fastai_data(
+    path: str, target: str, split_method: str, problem_type: str, test_size: float = 0.25, random_state: int = 42
+):
+    df = load_fastai_data(path, target, split_method, test_size, random_state)
+
+    return prepare_fastai_data(df, target, problem_type)
 
 
 def load_and_prepare_data(
@@ -217,21 +254,13 @@ def load_and_prepare_data(
         return prepare_other_data(train_df, test_df, target, problem_type)
 
 
-def train_model(params: Dict[str, Any], model_class, X_train, y_train, X_test, y_test, problem_type: str, target: str):
+def train_model(params: Dict[str, Any], model_class, X_train, X_test, y_train, y_test, problem_type: str, target: str):
     logger.info(f"Training {model_class.__name__} with params: {params}")
     try:
         if model_class == tabular_learner:
+            # might remove this
             # FastAI specific training
-            dls = X_train.dataloaders(bs=params['bs'])
-
-            learn = tabular_learner(dls, layers=list(params['layers']))
-            learn.fit_one_cycle(5)
-            test_dl = learn.dls.test_dl(X_test)
-            preds, _ = learn.get_preds(dl=test_dl)
-            if problem_type == 'regression':
-                loss = mean_squared_error(y_test, preds)
-            else:
-                loss = 1 - accuracy_score(y_test, preds.argmax(dim=1))
+            logger.warn("FastAI not set up for hyperopt")
         else:
             # Sklearn and XGBoost training
             model = model_class(**params)
@@ -259,7 +288,7 @@ def run_hyperopt(model_name: str, X_train, y_train, X_test, y_test, problem_type
         try:
             logger.info(f"Starting objective function with params: {params}")
             model_class = model_info['classifier'] if problem_type == 'classification' else model_info['regressor']
-            result = train_model(params, model_class, X_train, y_train, X_test, y_test, problem_type, target)
+            result = train_model(params, model_class, X_train, X_test, y_train, y_test, problem_type, target)
             logger.info(f"Finished objective function. Result: {result}")
             return result
         except Exception as e:
@@ -347,19 +376,18 @@ def save_results(results: Dict[str, Any]):
         logger.error(f"Error saving results to {filename}: {str(e)}")
 
 
-def train_fastai(train_df_wrapper):
+def train_fastai(data):
+    batch_size = 64
+    dls = data.dataloaders(bs=batch_size)
 
-    batch_size = 8  # 128
-    dls = train_df_wrapper.dataloaders(bs=batch_size)
+    learn = tabular_learner(dls, layers=[200, 100], metrics=[accuracy])
 
-    learn = tabular_learner(dls, layers=[20, 10])
-
-    learn.fit(4, 1e-2)
+    learn.fit_one_cycle(4, 1e-2)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"models/model_{timestamp}.pkl"
-    os.makedirs('results', exist_ok=True)
-    learn.export(filename, pickle_module=dill)
+    os.makedirs('models', exist_ok=True)
+    learn.export(filename)
 
 
 def main(args):
@@ -368,21 +396,22 @@ def main(args):
     for model_name in args.models:
         try:
             is_fastai = model_name == 'fastai_tabular'
-            X_train, X_test, y_train, y_test = load_and_prepare_data(
-                args.data_path,
-                args.target,
-                args.split_method,
-                args.problem_type,
-                args.test_size,
-                args.random_state,
-                is_fastai,
-            )
-
             if is_fastai:
+                X_train, df_target = load_and_prepare_fastai_data(
+                    args.data_path,
+                    args.target,
+                    args.split_method,
+                    args.problem_type,
+                    args.test_size,
+                    args.random_state,
+                )
+
                 # if is_fastai, don't use optimization
                 train_fastai(X_train)
 
             else:
+                X_train, X_test, y_train, y_test = load_and_prepare_data()
+
                 best_hyperparams = run_hyperopt(
                     model_name, X_train, y_train, X_test, y_test, args.problem_type, args.num_trials
                 )
