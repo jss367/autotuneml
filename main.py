@@ -20,6 +20,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from xgboost import XGBClassifier, XGBRegressor
 
+from fastai_utils import load_and_prepare_fastai_data, load_fastai_data, prepare_fastai_data
+
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -120,34 +122,6 @@ model_spaces = {
 }
 
 
-def load_fastai_data(
-    path: str, target: str, split_method: str, test_size: float = 0.25, random_state: int = 42
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    This doesn't split the data anymore
-    """
-    logger.info(f"Loading data from {path}")
-    df = pd.read_csv(path, parse_dates=['Date'])
-    logger.info(f"Raw data shape: {df.shape}")
-
-    if target not in df.columns:
-        raise ValueError(f"Target variable '{target}' not found in the dataset.")
-
-    # if split_method == 'date':
-    #     df = df.sort_values('Date')
-    #     split_index = int(len(df) * (1 - test_size))
-    #     split_date = df.iloc[split_index]['Date']
-    #     logger.info(f"Splitting data by date. Split date: {split_date}")
-    #     train_df = df[df['Date'] < split_date]
-    #     test_df = df[df['Date'] >= split_date]
-    # else:
-    #     logger.info(f"Splitting data randomly with test_size={test_size}")
-    #     train_df, test_df = train_test_split(df, test_size=test_size, random_state=random_state)
-
-    # logger.info(f"Data prepared. Train set shape: {train_df.shape}, Test set shape: {test_df.shape}")
-    return df
-
-
 def load_and_split_data(
     path: str, target: str, split_method: str, test_size: float = 0.25, random_state: int = 42
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -173,44 +147,6 @@ def load_and_split_data(
     return train_df, test_df
 
 
-def prepare_fastai_data(df: pd.DataFrame, target: str, problem_type: str):
-    """
-    This splits the data
-    """
-    continuous_vars, categorical_vars = cont_cat_split(df, dep_var=target, max_card=20)
-
-    preprocessing = [Categorify, FillMissing, Normalize]
-
-    if problem_type == 'regression':
-        y_block = RegressionBlock()
-    else:
-        y_block = CategoryBlock()
-
-    # Assuming 'Date' is the name of your date column
-    def date_splitter(df):
-        """
-        The splitter returns two lists - one of all the training data indices and one of all the validation data indices
-        """
-        train_mask = df['Date'] < pd.to_datetime('1/1/2024')
-        train_indices = df.index[train_mask].tolist()
-        val_indices = df.index[~train_mask].tolist()
-        return train_indices, val_indices
-
-    date_splits = date_splitter(df)
-
-    data = TabularPandas(
-        df,
-        procs=preprocessing,
-        cat_names=categorical_vars,
-        cont_names=continuous_vars,
-        y_names=target,
-        y_block=y_block,
-        splits=date_splits,
-    )
-
-    return data, df[target]
-
-
 def prepare_other_data(
     train_df: pd.DataFrame, test_df: pd.DataFrame, target: str, problem_type: str
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
@@ -225,14 +161,6 @@ def prepare_other_data(
         y_test = le.transform(y_test)
 
     return X_train, X_test, y_train, y_test
-
-
-def load_and_prepare_fastai_data(
-    path: str, target: str, split_method: str, problem_type: str, test_size: float = 0.25, random_state: int = 42
-):
-    df = load_fastai_data(path, target, split_method, test_size, random_state)
-
-    return prepare_fastai_data(df, target, problem_type)
 
 
 def load_and_prepare_data(
@@ -402,6 +330,7 @@ def main(args):
                     args.target,
                     args.split_method,
                     args.problem_type,
+                    logger,
                     args.test_size,
                     args.random_state,
                 )
