@@ -1,6 +1,7 @@
 import argparse
 import csv
 import logging
+import os
 from datetime import datetime
 from typing import Any, Dict, Tuple, Union
 
@@ -24,7 +25,8 @@ logger = logging.getLogger(__name__)
 # Define model spaces
 model_spaces = {
     'xgboost': {
-        'model': XGBClassifier,
+        'classifier': XGBClassifier,
+        'regressor': XGBRegressor,
         'hyperopt_space': {
             'max_depth': scope.int(hp.quniform("max_depth", 3, 18, 1)),
             'gamma': hp.uniform('gamma', 1, 9),
@@ -47,10 +49,10 @@ model_spaces = {
         },
     },
     'random_forest': {
-        'model': RandomForestClassifier,
+        'classifier': RandomForestClassifier,
+        'regressor': RandomForestRegressor,
         'hyperopt_space': {
             "n_estimators": scope.int(hp.quniform("n_estimators", 10, 700, 1)),
-            "criterion": hp.choice("criterion", ["gini", "entropy"]),
             "max_depth": scope.int(hp.quniform('max_depth', 1, 100, 1)),
             "min_samples_split": scope.int(hp.quniform('min_samples_split', 2, 20, 1)),
             "min_samples_leaf": scope.int(hp.quniform('min_samples_leaf', 1, 10, 1)),
@@ -67,8 +69,9 @@ model_spaces = {
             "random_state": 42,
         },
     },
-    'logistic_regression': {
-        'model': LogisticRegression,
+    'linear': {
+        'classifier': LogisticRegression,
+        'regressor': LinearRegression,
         'hyperopt_space': {
             'C': hp.loguniform('C', -4, 4),
             'penalty': hp.choice('penalty', ['l1', 'l2']),
@@ -83,7 +86,8 @@ model_spaces = {
         },
     },
     'fastai_tabular': {
-        'model': tabular_learner,
+        'classifier': tabular_learner,
+        'regressor': tabular_learner,
         'hyperopt_space': {
             'layers': hp.choice(
                 'layers',
@@ -125,15 +129,10 @@ def load_and_split_data(
         raise ValueError(f"Target variable '{target}' not found in the dataset.")
 
     if split_method == 'date':
-        # Sort the dataframe by date
         df = df.sort_values('Date')
-
-        # Calculate the split point
         split_index = int(len(df) * (1 - test_size))
         split_date = df.iloc[split_index]['Date']
-
         logger.info(f"Splitting data by date. Split date: {split_date}")
-
         train_df = df[df['Date'] < split_date]
         test_df = df[df['Date'] >= split_date]
     else:
@@ -141,22 +140,17 @@ def load_and_split_data(
         train_df, test_df = train_test_split(df, test_size=test_size, random_state=random_state)
 
     logger.info(f"Data prepared. Train set shape: {train_df.shape}, Test set shape: {test_df.shape}")
-
-    if split_method == 'date':
-        logger.info(f"Train date range: {train_df['Date'].min()} to {train_df['Date'].max()}")
-        logger.info(f"Test date range: {test_df['Date'].min()} to {test_df['Date'].max()}")
-
     return train_df, test_df
 
 
 def prepare_fastai_data(
-    train_df: pd.DataFrame, test_df: pd.DataFrame, target: str
+    train_df: pd.DataFrame, test_df: pd.DataFrame, target: str, problem_type
 ) -> Tuple[TabularPandas, TabularPandas, pd.Series, pd.Series]:
     cat_cols = train_df.select_dtypes(include=['object', 'category']).columns.tolist()
     cont_cols = train_df.select_dtypes(include=['int64', 'float64']).columns.tolist()
-    cont_cols.remove(target)  # Remove target from continuous columns
+    cont_cols.remove(target)
     if 'Date' in cont_cols:
-        cont_cols.remove('Date')  # Remove Date from continuous columns
+        cont_cols.remove('Date')
 
     procs = [Categorify, FillMissing, Normalize]
     train_data = TabularPandas(
@@ -169,29 +163,41 @@ def prepare_fastai_data(
 
 
 def prepare_other_data(
-    train_df: pd.DataFrame, test_df: pd.DataFrame, target: str
+    train_df: pd.DataFrame, test_df: pd.DataFrame, target: str, problem_type: str
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
     X_train = train_df.drop([target, 'Date'], axis=1)
     X_test = test_df.drop([target, 'Date'], axis=1)
     y_train = train_df[target]
     y_test = test_df[target]
+
+    if problem_type == 'classification':
+        le = LabelEncoder()
+        y_train = le.fit_transform(y_train)
+        y_test = le.transform(y_test)
+
     return X_train, X_test, y_train, y_test
 
 
 def load_and_prepare_data(
-    path: str, target: str, split_method: str, test_size: float = 0.25, random_state: int = 42, is_fastai: bool = False
+    path: str,
+    target: str,
+    split_method: str,
+    problem_type: str,
+    test_size: float = 0.25,
+    random_state: int = 42,
+    is_fastai: bool = False,
 ) -> Union[
     Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series], tuple[TabularPandas, TabularPandas, pd.Series, pd.Series]
 ]:
     train_df, test_df = load_and_split_data(path, target, split_method, test_size, random_state)
 
     if is_fastai:
-        return prepare_fastai_data(train_df, test_df, target)
+        return prepare_fastai_data(train_df, test_df, target, problem_type)
     else:
-        return prepare_other_data(train_df, test_df, target)
+        return prepare_other_data(train_df, test_df, target, problem_type)
 
 
-def train_model(params: Dict[str, Any], model_class, X_train, y_train, X_test, y_test):
+def train_model(params: Dict[str, Any], model_class, X_train, y_train, X_test, y_test, problem_type: str, target):
     logger.info(f"Training {model_class.__name__} with params: {params}")
     try:
         if model_class == tabular_learner:
@@ -200,23 +206,24 @@ def train_model(params: Dict[str, Any], model_class, X_train, y_train, X_test, y
             cont_names = X_train.select_dtypes(include=['int64', 'float64']).columns.tolist()
             cat_names = X_train.select_dtypes(include=['object', 'category']).columns.tolist()
             dls = TabularDataLoaders.from_df(
-                X_train, y_name='r_posn', cat_names=cat_names, cont_names=cont_names, procs=procs, bs=params['bs']
+                X_train, y_name=target, cat_names=cat_names, cont_names=cont_names, procs=procs, bs=params['bs']
             )
             model = tabular_learner(dls, layers=params['layers'], emb_drop=params['emb_drop'], ps=params['ps'])
-            model.fit_one_cycle(5)  # You might want to make the number of epochs configurable
+            model.fit_one_cycle(5)
             preds, _ = model.get_preds(dl=dls.test_dl(X_test))
-            loss = mean_squared_error(y_test, preds)
+            loss = (
+                mean_squared_error(y_test, preds)
+                if problem_type == 'regression'
+                else 1 - accuracy_score(y_test, preds.argmax(dim=1))
+            )
         else:
             # Sklearn and XGBoost training
             model = model_class(**params)
             model.fit(X_train, y_train)
             preds = model.predict(X_test)
-            # Check if it's a classifier or regressor
-            if hasattr(model, "predict_proba"):
-                # It's a classifier
+            if problem_type == 'classification':
                 loss = 1 - accuracy_score(y_test, preds)
             else:
-                # It's a regressor
                 loss = mean_squared_error(y_test, preds)
 
         logger.info(f"Achieved loss: {loss}")
@@ -227,7 +234,7 @@ def train_model(params: Dict[str, Any], model_class, X_train, y_train, X_test, y
         return {'loss': np.inf, 'status': STATUS_FAIL, 'error': str(e)}
 
 
-def run_hyperopt(model_name: str, X_train, y_train, X_test, y_test, num_trials: int = 50):
+def run_hyperopt(model_name: str, X_train, y_train, X_test, y_test, problem_type: str, num_trials: int = 50, target=''):
     logger.info(f"Starting Hyperopt optimization for {model_name}")
     model_info = model_spaces[model_name]
     trials = Trials()
@@ -235,7 +242,8 @@ def run_hyperopt(model_name: str, X_train, y_train, X_test, y_test, num_trials: 
     def objective(params):
         try:
             logger.info(f"Starting objective function with params: {params}")
-            result = train_model(params, model_info['model'], X_train, y_train, X_test, y_test)
+            model_class = model_info['classifier'] if problem_type == 'classification' else model_info['regressor']
+            result = train_model(params, model_class, X_train, y_train, X_test, y_test, problem_type, target)
             logger.info(f"Finished objective function. Result: {result}")
             return result
         except Exception as e:
@@ -255,10 +263,8 @@ def run_hyperopt(model_name: str, X_train, y_train, X_test, y_test, num_trials: 
         best_hyperparams = space_eval(model_info['hyperopt_space'], best)
         logger.info(f"Best hyperparameters for {model_name}: {best_hyperparams}")
 
-        # Log the number of trials completed
         logger.info(f"Completed {len(trials.trials)} trials for {model_name}")
 
-        # Log the best score achieved
         best_score = min([t['result']['loss'] for t in trials.trials if t['result']['status'] == STATUS_OK])
         logger.info(f"Best score achieved for {model_name}: {best_score}")
 
@@ -269,58 +275,89 @@ def run_hyperopt(model_name: str, X_train, y_train, X_test, y_test, num_trials: 
     return best_hyperparams
 
 
-def train_and_evaluate(model_name: str, best_hyperparams: Dict[str, Any], X_train, y_train, X_test, y_test):
+def train_and_evaluate(
+    model_name: str, best_hyperparams: Dict[str, Any], X_train, y_train, X_test, y_test, problem_type: str
+):
     logger.info(f"Training final {model_name} model with best hyperparameters")
-    model_class = model_spaces[model_name]['model']
+    model_info = model_spaces[model_name]
 
-    if model_class == tabular_learner:
+    if model_name == 'fastai_tabular':
         # FastAI specific training and evaluation
         procs = [Categorify, FillMissing, Normalize]
         cont_names = X_train.select_dtypes(include=['int64', 'float64']).columns.tolist()
         cat_names = X_train.select_dtypes(include=['object', 'category']).columns.tolist()
         dls = TabularDataLoaders.from_df(
-            X_train, y_name='r_posn', cat_names=cat_names, cont_names=cont_names, procs=procs, bs=best_hyperparams['bs']
+            X_train, y_name='target', cat_names=cat_names, cont_names=cont_names, procs=procs, bs=best_hyperparams['bs']
         )
         model = tabular_learner(
             dls, layers=best_hyperparams['layers'], emb_drop=best_hyperparams['emb_drop'], ps=best_hyperparams['ps']
         )
-        model.fit_one_cycle(5)  # You might want to make the number of epochs configurable
+        model.fit_one_cycle(5)
         preds, _ = model.get_preds(dl=dls.test_dl(X_test))
-        mse = mean_squared_error(y_test, preds)
-        r2 = r2_score(y_test, preds)
-        logger.info(f"Final model performance - MSE: {mse}, R2 Score: {r2}")
-        return {'model': model_name, 'mse': mse, 'r2': r2, **best_hyperparams}
+        if problem_type == 'regression':
+            mse = mean_squared_error(y_test, preds)
+            r2 = r2_score(y_test, preds)
+            logger.info(f"Final model performance - MSE: {mse}, R2 Score: {r2}")
+            return {'model': model_name, 'mse': mse, 'r2': r2, **best_hyperparams}
+        else:
+            accuracy = accuracy_score(y_test, preds.argmax(dim=1))
+            f1 = f1_score(y_test, preds.argmax(dim=1), average='weighted')
+            logger.info(f"Final model performance - Accuracy: {accuracy}, F1 Score: {f1}")
+            return {'model': model_name, 'accuracy': accuracy, 'f1': f1, **best_hyperparams}
     else:
         # Sklearn and XGBoost training and evaluation
+        model_class = model_info['classifier'] if problem_type == 'classification' else model_info['regressor']
         model = model_class(**best_hyperparams)
         model.fit(X_train, y_train)
         preds = model.predict(X_test)
-        mse = mean_squared_error(y_test, preds)
-        r2 = r2_score(y_test, preds)
-        logger.info(f"Final model performance - MSE: {mse}, R2 Score: {r2}")
-        return {'model': model_name, 'mse': mse, 'r2': r2, **best_hyperparams}
+        if problem_type == 'regression':
+            mse = mean_squared_error(y_test, preds)
+            r2 = r2_score(y_test, preds)
+            logger.info(f"Final model performance - MSE: {mse}, R2 Score: {r2}")
+            return {'model': model_name, 'mse': mse, 'r2': r2, **best_hyperparams}
+        else:
+            accuracy = accuracy_score(y_test, preds)
+            f1 = f1_score(y_test, preds, average='weighted')
+            logger.info(f"Final model performance - Accuracy: {accuracy}, F1 Score: {f1}")
+            return {'model': model_name, 'accuracy': accuracy, 'f1': f1, **best_hyperparams}
 
 
 def save_results(results: Dict[str, Any]):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"results/{results['model']}_results_{timestamp}.csv"
-    logger.info(f"Saving results to {filename}")
-    with open(filename, 'w', newline='') as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=results.keys())
-        writer.writeheader()
-        writer.writerow(results)
+    try:
+        logger.info(f"Saving results to {filename}")
+        with open(filename, 'w', newline='') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=results.keys())
+            writer.writeheader()
+            writer.writerow(results)
+        logger.info(f"Results saved successfully to {filename}")
+    except IOError as e:
+        logger.error(f"Error saving results to {filename}: {str(e)}")
 
 
 def main(args):
+    os.makedirs('results', exist_ok=True)
+
     for model_name in args.models:
         try:
             is_fastai = model_name == 'fastai_tabular'
             X_train, X_test, y_train, y_test = load_and_prepare_data(
-                args.data_path, args.target, args.split_method, args.test_size, args.random_state, is_fastai
+                args.data_path,
+                args.target,
+                args.split_method,
+                args.problem_type,
+                args.test_size,
+                args.random_state,
+                is_fastai,
             )
 
-            best_hyperparams = run_hyperopt(model_name, X_train, y_train, X_test, y_test, args.num_trials)
-            results = train_and_evaluate(model_name, best_hyperparams, X_train, y_train, X_test, y_test)
+            best_hyperparams = run_hyperopt(
+                model_name, X_train, y_train, X_test, y_test, args.problem_type, args.num_trials
+            )
+            results = train_and_evaluate(
+                model_name, best_hyperparams, X_train, y_train, X_test, y_test, args.problem_type
+            )
             save_results(results)
         except Exception as e:
             logger.error(f"Failed to optimize and train {model_name}: {str(e)}")
@@ -335,7 +372,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--models",
         nargs='+',
-        default=['xgboost', 'random_forest', 'logistic_regression', 'fastai_tabular'],
+        default=['xgboost', 'random_forest', 'linear', 'fastai_tabular'],
         help="List of models to train and evaluate",
     )
     parser.add_argument("--num_trials", type=int, default=10, help="Number of trials for hyperparameter optimization")
@@ -349,6 +386,13 @@ if __name__ == "__main__":
         choices=['random', 'date'],
         default='random',
         help="Method to split the data into train and test sets",
+    )
+    parser.add_argument(
+        "--problem_type",
+        type=str,
+        choices=['classification', 'regression'],
+        required=True,
+        help="Type of machine learning problem",
     )
 
     args = parser.parse_args()
