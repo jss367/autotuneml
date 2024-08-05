@@ -37,7 +37,9 @@ def convert_config_to_hyperopt_space(config_space):
     for param, value in config_space.items():
         if isinstance(value, list):
             if len(value) == 2:
-                if all(isinstance(v, int) for v in value):
+                if param in ['max_depth', 'n_estimators']:
+                    hyperopt_space[param] = scope.int(hp.quniform(param, value[0], value[1], 1))
+                elif all(isinstance(v, int) for v in value):
                     hyperopt_space[param] = hp.quniform(param, value[0], value[1], 1)
                 elif all(isinstance(v, float) for v in value):
                     hyperopt_space[param] = hp.uniform(param, value[0], value[1])
@@ -46,6 +48,24 @@ def convert_config_to_hyperopt_space(config_space):
         elif isinstance(value, (int, float)):
             hyperopt_space[param] = value
     return hyperopt_space
+
+
+def get_model_class(model_name, problem_type):
+    if model_name == 'xgboost':
+        from xgboost import XGBClassifier, XGBRegressor
+
+        return XGBClassifier if problem_type == 'classification' else XGBRegressor
+    elif model_name == 'random_forest':
+        from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+
+        return RandomForestClassifier if problem_type == 'classification' else RandomForestRegressor
+    elif model_name == 'linear':
+        from sklearn.linear_model import LinearRegression, LogisticRegression
+
+        return LogisticRegression if problem_type == 'classification' else LinearRegression
+    # Add other model types as needed
+    else:
+        raise ValueError(f"Unknown model type: {model_name}")
 
 
 def run_hyperopt(
@@ -61,7 +81,8 @@ def run_hyperopt(
     def objective(params):
         try:
             logger.info(f"Starting objective function with params: {params}")
-            model_class = model_info['classifier'] if problem_type == 'classification' else model_info['regressor']
+            # model_info = optim_config.model_spaces[model_name]
+            model_class = get_model_class(model_name, problem_type)
             result = train_model(params, model_class, X_train, X_test, y_train, y_test, problem_type)
             logger.info(f"Finished objective function. Result: {result}")
             return result
@@ -123,7 +144,7 @@ def train_and_evaluate_best_params(
             return {'model': model_name, 'accuracy': accuracy, 'f1': f1, **best_hyperparams}, learn
     else:
         # Sklearn and XGBoost training and evaluation
-        model_class = model_info['classifier'] if problem_type == 'classification' else model_info['regressor']
+        model_class = get_model_class(model_name, problem_type)
         model = model_class(**best_hyperparams)
         model.fit(X_train, y_train)
         preds = model.predict(X_test)

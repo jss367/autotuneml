@@ -91,6 +91,7 @@ def fastai_objective(trial, data, problem_type, hyperparam_config):
     lr = trial.suggest_float('lr', lr_low, lr_high, log=True)
 
     embed_p = trial.suggest_float('embed_p', *fastai_config['embed_p'])
+    epochs = trial.suggest_int('epochs', fastai_config['epochs'][0], fastai_config['epochs'][1])
 
     dls = data.dataloaders(bs=bs)
 
@@ -99,8 +100,6 @@ def fastai_objective(trial, data, problem_type, hyperparam_config):
     learn = tabular_learner(dls, layers=layers, config=hyperparam_config, metrics=metrics)
 
     try:
-        # Use the epochs from the config
-        epochs = fastai_config['epochs']
         learn.fit_one_cycle(epochs, lr, cbs=[EarlyStoppingCallback(monitor='valid_loss', min_delta=0.01, patience=3)])
     except Exception as e:
         print(f"Training failed with error: {str(e)}")

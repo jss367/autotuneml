@@ -22,14 +22,24 @@ from skl_train import run_hyperopt, train_and_evaluate_best_params
 
 
 class Config(SimpleNamespace):
+    def __init__(self, **kwargs):
+        for key, value in kwargs.items():
+            if isinstance(value, dict):
+                setattr(self, key, Config(**value))
+            else:
+                setattr(self, key, value)
+
+    def items(self):
+        return {k: v for k, v in self.__dict__.items() if not k.startswith('__')}.items()
+
     def __getitem__(self, key):
-        return self.__dict__[key]
+        return getattr(self, key)
 
     def __setitem__(self, key, value):
-        self.__dict__[key] = value
+        setattr(self, key, value)
 
     def get(self, key, default=None):
-        return self.__dict__.get(key, default)
+        return getattr(self, key, default)
 
     @classmethod
     def from_dict(cls, data):
@@ -185,10 +195,24 @@ def main(args):
                     run_config.problem_type,
                 )
                 best_hyperparams = run_hyperopt(
-                    model_name, X_train, y_train, X_test, y_test, run_config.problem_type, run_config.num_trials, optim_config
+                    model_name,
+                    X_train,
+                    y_train,
+                    X_test,
+                    y_test,
+                    run_config.problem_type,
+                    run_config.num_trials,
+                    optim_config,
                 )
                 results, model = train_and_evaluate_best_params(
-                    model_name, best_hyperparams, X_train, y_train, X_test, y_test, run_config.problem_type, optim_config
+                    model_name,
+                    best_hyperparams,
+                    X_train,
+                    y_train,
+                    X_test,
+                    y_test,
+                    run_config.problem_type,
+                    optim_config,
                 )
                 save_results(results, timestamp)
                 save_model(model, model_name, timestamp)
