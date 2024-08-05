@@ -15,6 +15,7 @@ from sklearn.metrics import accuracy_score, f1_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from xgboost import XGBClassifier
+from fastai.tabular.all import *
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -79,6 +80,29 @@ model_spaces = {
             'penalty': lambda trial: trial.suggest_categorical('penalty', ['l1', 'l2']),
             'solver': lambda trial: trial.suggest_categorical('solver', ['liblinear', 'saga']),
             'max_iter': lambda trial: trial.suggest_int('max_iter', 100, 1000, 100),
+        },
+    },
+    'fastai_tabular': {
+        'model': tabular_learner,
+        'hyperopt_space': {
+            'layers': hp.choice('layers', [
+                [200, 100],
+                [500, 200],
+                [1000, 500, 200],
+            ]),
+            'emb_drop': hp.uniform('emb_drop', 0, 0.5),
+            'ps': hp.uniform('ps', 0, 0.5),
+            'bs': scope.int(hp.quniform('bs', 32, 256, 32)),
+        },
+        'optuna_space': {
+            'layers': lambda trial: trial.suggest_categorical('layers', [
+                [200, 100],
+                [500, 200],
+                [1000, 500, 200],
+            ]),
+            'emb_drop': lambda trial: trial.suggest_float('emb_drop', 0, 0.5),
+            'ps': lambda trial: trial.suggest_float('ps', 0, 0.5),
+            'bs': lambda trial: trial.suggest_int('bs', 32, 256, 32),
         },
     },
 }
