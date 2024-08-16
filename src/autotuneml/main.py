@@ -47,6 +47,14 @@ class Config(SimpleNamespace):
         return convert(data)
 
 
+def get_config_path(config_name):
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    src_dir = os.path.dirname(current_dir)
+    project_root = os.path.dirname(src_dir)
+    config_path = os.path.join(project_root, 'configs', config_name)
+    return config_path
+
+
 def load_config(path):
     with open(path, 'r') as file:
         config_dict = yaml.safe_load(file)
@@ -73,9 +81,18 @@ def save_model(model, model_name: str, timestamp: str):
     logger.info(f"Model saved successfully to {model_filename}")
 
 
-def run_autotuneml(data_path, target, run_config_path):
-    run_config = load_config(run_config_path)
-    optim_config = load_config('configs/optimization_config.yaml')
+def run_autotuneml(data_path, target, run_config_path=None, optim_config_path=None):
+    if run_config_path:
+        run_config = load_config(run_config_path)
+    else:
+        default_config_path = get_config_path('run_config.yaml')
+        run_config = load_config(default_config_path)
+
+    if optim_config_path:
+        optim_config = load_config(optim_config_path)
+    else:
+        default_optim_config_path = get_config_path('optimization_config.yaml')
+        optim_config = load_config(default_optim_config_path)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -143,7 +160,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Machine Learning Pipeline with Hyperparameter Optimization")
     parser.add_argument("--data_path", type=str, required=True, help="Path to the input CSV file")
     parser.add_argument("--target", type=str, required=True, help="Name of the target variable column")
-    parser.add_argument("--run_config_path", type=str, required=True)
+    parser.add_argument("--run_config_path", type=str, required=True, help="Path to the run configuration file")
+    parser.add_argument("--optim_config_path", type=str, help="Path to the optimization configuration file")
 
     args = parser.parse_args()
-    main(args)
+    run_autotuneml(args.data_path, args.target, args.run_config_path, args.optim_config_path)

@@ -2,10 +2,10 @@
 
 # Model Selection
 models:
-  # - xgboost
-  # - random_forest
-  # - linear
-  - fastai_tabular
+  - xgboost
+  - random_forest
+  - linear
+  # - fastai_tabular
 
 # Hyperparameter Optimization
 num_trials: 20
@@ -13,7 +13,7 @@ num_trials: 20
 # Data Splitting
 test_size: 0.25
 random_state: 42
-split_method: "random"  # or "date"
+split_method: "random" # or "date"
 
 # Problem Type
-problem_type: "classification"  # or "regression"
+problem_type: "classification" # or "regression"
