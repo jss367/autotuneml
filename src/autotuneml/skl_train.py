@@ -42,27 +42,23 @@ def convert_config_to_hyperopt_space(config_space):
         logger.debug(f"Converting parameter: {param} with value: {value}")
         if isinstance(value, list):
             if len(value) == 2:
-                low, high = value
-                if low > high:
-                    logger.warning(f"Invalid range for {param}: [{low}, {high}]. Swapping values.")
-                    low, high = high, low
-
-                if param in ['max_depth', 'n_estimators', 'min_samples_split', 'min_samples_leaf']:
-                    hyperopt_space[param] = scope.int(hp.quniform(param, low, high, 1))
+                if all(isinstance(v, (int, float)) for v in value):
+                    low, high = value
+                    if low > high:
+                        logger.warning(f"Invalid range for {param}: [{low}, {high}]. Swapping values.")
+                        low, high = high, low
                 elif param == 'C':
                     # Ensure values are positive and convert to float
-                    low, high = map(float, [low, high])
-                    if low <= 0 or high <= 0:
-                        logger.warning(f"Invalid range for C: [{low}, {high}]. Using default range [1e-4, 1e4]")
-                        low, high = 1e-4, 1e4
+                    low, high = map(float, value)
                     hyperopt_space[param] = hp.loguniform(param, np.log(low), np.log(high))
                 elif all(isinstance(v, bool) for v in value):
                     hyperopt_space[param] = hp.choice(param, value)
                 elif all(isinstance(v, int) for v in value):
-                    hyperopt_space[param] = hp.quniform(param, low, high, 1)
+                    hyperopt_space[param] = scope.int(hp.quniform(param, low, high, 1))
                 elif all(isinstance(v, float) for v in value):
                     hyperopt_space[param] = hp.uniform(param, low, high)
-            elif len(value) > 2:
+            else:
+                # This handles categorical parameters like max_features and criterion
                 hyperopt_space[param] = hp.choice(param, value)
         elif isinstance(value, (int, float)):
             hyperopt_space[param] = value

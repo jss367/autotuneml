@@ -29,7 +29,7 @@ model_spaces:
       solver: ["liblinear", "saga"]
       max_iter: [100, 1000]
       class_weight: [None, "balanced"] # for classification
-      fit_intercept: [true, false]
+      fit_intercept: [false, true]
   fastai_tabular:
     hyperopt_space:
       n_layers: [1, 5]
