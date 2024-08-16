@@ -14,9 +14,8 @@ from fastai.tabular.all import (
 )
 from fastai.tabular.all import accuracy as fai_accuracy
 from fastai.tabular.all import cont_cat_split, rmse, tabular_config, tabular_learner
-from sklearn.metrics import accuracy_score, f1_score, mean_squared_error, r2_score
-
 from log_config import logger
+from sklearn.metrics import accuracy_score, f1_score, mean_squared_error, r2_score
 
 
 def load_and_prepare_fastai_data(
@@ -78,10 +77,7 @@ def fastai_objective(trial, data, problem_type, hyperparam_config):
     fastai_config = hyperparam_config['model_spaces']['fastai_tabular']['hyperopt_space']
 
     n_layers = trial.suggest_int('n_layers', *fastai_config['n_layers'])
-    layers = []
-    for i in range(n_layers):
-        layers.append(trial.suggest_int(f'layer_{i}', *fastai_config['layer_size']))
-
+    layers = [trial.suggest_int(f'layer_{i}', *fastai_config['layer_size']) for i in range(n_layers)]
     ps = trial.suggest_float('ps', *fastai_config['ps'])
     bs = trial.suggest_categorical('bs', fastai_config['bs'])
 
