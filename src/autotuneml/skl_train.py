@@ -34,12 +34,18 @@ def train_model(params: Dict[str, Any], model_class, X_train, X_test, y_train, y
 def convert_config_to_hyperopt_space(config_space):
     hyperopt_space = {}
     for param, value in config_space.items():
+        logger.debug(f"Converting parameter: {param} with value: {value}")
         if isinstance(value, list):
             if len(value) == 2:
                 if param in ['max_depth', 'n_estimators']:
                     hyperopt_space[param] = scope.int(hp.quniform(param, value[0], value[1], 1))
                 elif param == 'C':
-                    hyperopt_space[param] = hp.loguniform(param, np.log(value[0]), np.log(value[1]))
+                    # Ensure values are positive and convert to float
+                    low, high = map(float, value)
+                    if low <= 0 or high <= 0:
+                        logger.warning(f"Invalid range for C: [{low}, {high}]. Using default range [1e-4, 1e4]")
+                        low, high = 1e-4, 1e4
+                    hyperopt_space[param] = hp.loguniform(param, np.log(low), np.log(high))
                 elif all(isinstance(v, int) for v in value):
                     hyperopt_space[param] = hp.quniform(param, value[0], value[1], 1)
                 elif all(isinstance(v, float) for v in value):
@@ -48,6 +54,15 @@ def convert_config_to_hyperopt_space(config_space):
                 hyperopt_space[param] = hp.choice(param, value)
         elif isinstance(value, (int, float)):
             hyperopt_space[param] = value
+        else:
+            # For parameters that don't fit into the above categories (e.g., strings, booleans)
+            hyperopt_space[param] = hp.choice(param, [value])
+
+        if param in hyperopt_space:
+            logger.debug(f"Converted {param} to: {hyperopt_space[param]}")
+        else:
+            logger.debug(f"Parameter {param} was not added to hyperopt_space")
+
     return hyperopt_space
 
 
@@ -114,6 +129,20 @@ def run_hyperopt(
         file_name = exc_tb.tb_frame.f_code.co_filename
         line_number = exc_tb.tb_lineno
         logger.error(f"Error during hyperparameter optimization: {str(e)} in {file_name}, line {line_number}")
+        # Create default hyperparameters based on the hyperopt_space
+        best_hyperparams = {}
+        for key, value in hyperopt_space.items():
+            if isinstance(value, (int, float)):
+                best_hyperparams[key] = value
+            elif hasattr(value, 'pos_args'):  # This checks if it's a hyperopt distribution
+                if 'quniform' in str(value):
+                    best_hyperparams[key] = value.pos_args[1]  # Use the lower bound
+                elif 'choice' in str(value):
+                    best_hyperparams[key] = value.pos_args[0][0]  # Use the first choice
+                else:
+                    best_hyperparams[key] = value.pos_args[0]  # Use the first argument as default
+            else:
+                best_hyperparams[key] = value  # For any other case, just use the value as is
         return None
 
     return best_hyperparams
@@ -124,6 +153,13 @@ def train_and_evaluate_best_params(
 ):
     logger.info(f"Training final {model_name} model with best hyperparameters")
     model_info = optim_config.model_spaces[model_name]
+
+    # Filter out hyperparameters that are not applicable to the specific model
+    model_class = get_model_class(model_name, problem_type)
+    valid_params = model_class().get_params().keys()
+    filtered_hyperparams = {k: v for k, v in best_hyperparams.items() if k in valid_params}
+
+    logger.info(f"Filtered hyperparameters for {model_name}: {filtered_hyperparams}")
 
     if model_name == 'fastai_tabular':
         # FastAI specific training and evaluation

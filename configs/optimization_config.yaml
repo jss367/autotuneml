@@ -21,7 +21,7 @@ model_spaces:
       random_state: 42
       criterion: ["gini", "entropy"]
       min_weight_fraction_leaf: [0, 0.5]
-      bootstrap: [True, False]
+      bootstrap: [False, True]
   linear:
     hyperopt_space:
       C: [1e-4, 1e4]
