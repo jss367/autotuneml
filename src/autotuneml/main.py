@@ -62,6 +62,7 @@ def load_config(path):
 
 
 def save_results(results: Dict[str, Any], timestamp: str):
+    os.makedirs('results', exist_ok=True)
     filename = f"results/{results['model']}_results_{timestamp}.csv"
     try:
         logger.info(f"Saving results to {filename}")

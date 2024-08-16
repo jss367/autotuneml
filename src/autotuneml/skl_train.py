@@ -38,6 +38,8 @@ def convert_config_to_hyperopt_space(config_space):
             if len(value) == 2:
                 if param in ['max_depth', 'n_estimators']:
                     hyperopt_space[param] = scope.int(hp.quniform(param, value[0], value[1], 1))
+                elif param == 'C':
+                    hyperopt_space[param] = hp.loguniform(param, np.log(value[0]), np.log(value[1]))
                 elif all(isinstance(v, int) for v in value):
                     hyperopt_space[param] = hp.quniform(param, value[0], value[1], 1)
                 elif all(isinstance(v, float) for v in value):
@@ -70,7 +72,7 @@ def get_model_class(model_name, problem_type):
 def run_hyperopt(
     model_name: str, X_train, y_train, X_test, y_test, problem_type: str, num_trials: int = 50, optim_config=None
 ):
-    logger.info(f"Starting Hyperopt optimization for {model_name}")
+    logger.info("Starting Hyperopt optimization for %s", model_name)
     model_info = optim_config.model_spaces[model_name]
     trials = Trials()
 
@@ -79,7 +81,7 @@ def run_hyperopt(
 
     def objective(params):
         try:
-            logger.info(f"Starting objective function with params: {params}")
+            logger.info("Starting objective function with params: %s", params)
             # model_info = optim_config.model_spaces[model_name]
             model_class = get_model_class(model_name, problem_type)
             result = train_model(params, model_class, X_train, X_test, y_train, y_test, problem_type)

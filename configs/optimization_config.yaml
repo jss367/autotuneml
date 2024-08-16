@@ -17,18 +17,18 @@ model_spaces:
       max_depth: [1, 100]
       min_samples_split: [2, 20]
       min_samples_leaf: [1, 10]
-      max_features: ['sqrt', 'log2']
+      max_features: ["sqrt", "log2"]
       random_state: 42
-      criterion: ['gini', 'entropy']
+      criterion: ["gini", "entropy"]
       min_weight_fraction_leaf: [0, 0.5]
       bootstrap: [True, False]
   linear:
     hyperopt_space:
-      C: [-4, 4]
-      penalty: ['l1', 'l2']
-      solver: ['liblinear', 'saga']
+      C: [1e-4, 1e4]
+      penalty: ["l1", "l2"]
+      solver: ["liblinear", "saga"]
       max_iter: [100, 1000]
-      class_weight: [None, 'balanced']  # for classification
+      class_weight: [None, "balanced"] # for classification
       fit_intercept: [True, False]
   fastai_tabular:
     hyperopt_space:
@@ -41,6 +41,3 @@ model_spaces:
       embed_p: [0, 0.5]
       epochs: [3, 20]
       weight_decay: [1e-5, 1e-1]
-
-
-  
