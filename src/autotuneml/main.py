@@ -8,10 +8,11 @@ from typing import Any, Dict
 
 import joblib
 import yaml
-from data import load_and_prepare_data
-from fastai_train import load_and_prepare_fastai_data, train_fastai_with_optuna
-from log_config import logger
-from skl_train import run_hyperopt, train_and_evaluate_best_params
+
+from autotuneml.data import load_and_prepare_data
+from autotuneml.fastai_train import load_and_prepare_fastai_data, train_fastai_with_optuna
+from autotuneml.log_config import logger
+from autotuneml.skl_train import run_hyperopt, train_and_evaluate_best_params
 
 
 class Config(SimpleNamespace):
