@@ -21,7 +21,7 @@ model_spaces:
       random_state: 42
       criterion: ["gini", "entropy"]
       min_weight_fraction_leaf: [0, 0.5]
-      bootstrap: [False, True]
+      bootstrap: [false, true]
   linear:
     hyperopt_space:
       C: [1e-4, 1e4]
@@ -29,7 +29,7 @@ model_spaces:
       solver: ["liblinear", "saga"]
       max_iter: [100, 1000]
       class_weight: [None, "balanced"] # for classification
-      fit_intercept: [True, False]
+      fit_intercept: [true, false]
   fastai_tabular:
     hyperopt_space:
       n_layers: [1, 5]

@@ -2,7 +2,7 @@
 
 # Model Selection
 models:
-  - xgboost
+  # - xgboost
   - random_forest
   - linear
   # - fastai_tabular

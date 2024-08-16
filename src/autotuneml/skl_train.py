@@ -14,6 +14,11 @@ def train_model(params: Dict[str, Any], model_class, X_train, X_test, y_train, y
     """Sklearn and XGBoost training"""
     logger.info(f"Training {model_class.__name__} with params: {params}")
     try:
+        # Ensure integer parameters for RandomForestClassifier
+        if model_class.__name__ == 'RandomForestClassifier':
+            for param in ['max_depth', 'n_estimators', 'min_samples_split', 'min_samples_leaf']:
+                if param in params:
+                    params[param] = int(params[param])
 
         model = model_class(**params)
         model.fit(X_train, y_train)
@@ -37,25 +42,34 @@ def convert_config_to_hyperopt_space(config_space):
         logger.debug(f"Converting parameter: {param} with value: {value}")
         if isinstance(value, list):
             if len(value) == 2:
-                if param in ['max_depth', 'n_estimators']:
-                    hyperopt_space[param] = scope.int(hp.quniform(param, value[0], value[1], 1))
+                low, high = value
+                if low > high:
+                    logger.warning(f"Invalid range for {param}: [{low}, {high}]. Swapping values.")
+                    low, high = high, low
+
+                if param in ['max_depth', 'n_estimators', 'min_samples_split', 'min_samples_leaf']:
+                    hyperopt_space[param] = scope.int(hp.quniform(param, low, high, 1))
                 elif param == 'C':
                     # Ensure values are positive and convert to float
-                    low, high = map(float, value)
+                    low, high = map(float, [low, high])
                     if low <= 0 or high <= 0:
                         logger.warning(f"Invalid range for C: [{low}, {high}]. Using default range [1e-4, 1e4]")
                         low, high = 1e-4, 1e4
                     hyperopt_space[param] = hp.loguniform(param, np.log(low), np.log(high))
+                elif all(isinstance(v, bool) for v in value):
+                    hyperopt_space[param] = hp.choice(param, value)
                 elif all(isinstance(v, int) for v in value):
-                    hyperopt_space[param] = hp.quniform(param, value[0], value[1], 1)
+                    hyperopt_space[param] = hp.quniform(param, low, high, 1)
                 elif all(isinstance(v, float) for v in value):
-                    hyperopt_space[param] = hp.uniform(param, value[0], value[1])
+                    hyperopt_space[param] = hp.uniform(param, low, high)
             elif len(value) > 2:
                 hyperopt_space[param] = hp.choice(param, value)
         elif isinstance(value, (int, float)):
             hyperopt_space[param] = value
+        elif isinstance(value, bool):
+            hyperopt_space[param] = value
         else:
-            # For parameters that don't fit into the above categories (e.g., strings, booleans)
+            # For parameters that don't fit into the above categories (e.g., strings)
             hyperopt_space[param] = hp.choice(param, [value])
 
         if param in hyperopt_space:
