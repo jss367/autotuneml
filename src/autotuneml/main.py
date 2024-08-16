@@ -73,28 +73,28 @@ def save_model(model, model_name: str, timestamp: str):
     logger.info(f"Model saved successfully to {model_filename}")
 
 
-def main(args):
-    run_config = load_config(args.run_config_path)
+def run_autotuneml(data_path, target, run_config_path):
+    run_config = load_config(run_config_path)
     optim_config = load_config('configs/optimization_config.yaml')
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    results = {}
 
     for model_name in run_config.models:
         try:
             is_fastai = model_name == 'fastai_tabular'
             if is_fastai:
                 data = load_and_prepare_fastai_data(
-                    args.data_path,
-                    args.target,
+                    data_path,
+                    target,
                     run_config.problem_type,
                 )
-                results, model = train_fastai_with_optuna(data, run_config, optim_config)
-                save_results(results, timestamp)
-                save_model(model, model_name, timestamp)
+                model_results, model = train_fastai_with_optuna(data, run_config, optim_config)
             else:
                 X_train, X_test, y_train, y_test = load_and_prepare_data(
-                    args.data_path,
-                    args.target,
+                    data_path,
+                    target,
                     run_config.split_method,
                     run_config.problem_type,
                 )
@@ -108,7 +108,7 @@ def main(args):
                     run_config.num_trials,
                     optim_config,
                 )
-                results, model = train_and_evaluate_best_params(
+                model_results, model = train_and_evaluate_best_params(
                     model_name,
                     best_hyperparams,
                     X_train,
@@ -118,8 +118,10 @@ def main(args):
                     run_config.problem_type,
                     optim_config,
                 )
-                save_results(results, timestamp)
-                save_model(model, model_name, timestamp)
+
+            save_results(model_results, timestamp)
+            save_model(model, model_name, timestamp)
+            results[model_name] = model_results
 
             logger.info(f"Best {model_name} model has been saved in the 'models' directory.")
         except Exception as e:
@@ -127,8 +129,14 @@ def main(args):
             file_name = exc_tb.tb_frame.f_code.co_filename
             line_number = exc_tb.tb_lineno
             logger.error(f"Failed to optimize and train {model_name}: {str(e)} in {file_name}, line {line_number}")
+            results[model_name] = {"error": str(e)}
 
     logger.info("Process completed")
+    return results
+
+
+def main(args):
+    return run_autotuneml(args.data_path, args.target, args.run_config_path)
 
 
 if __name__ == "__main__":
