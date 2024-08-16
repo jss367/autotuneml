@@ -5,10 +5,8 @@ import numpy as np
 from fastai.tabular.all import tabular_learner
 from hyperopt import STATUS_FAIL, STATUS_OK, Trials, fmin, hp, space_eval, tpe
 from hyperopt.pyll.base import scope
-from pyxtend import struct
-from sklearn.metrics import accuracy_score, f1_score, mean_squared_error, r2_score
-
 from log_config import logger
+from sklearn.metrics import accuracy_score, f1_score, mean_squared_error, r2_score
 
 
 def train_model(params: Dict[str, Any], model_class, X_train, X_test, y_train, y_test, problem_type: str):

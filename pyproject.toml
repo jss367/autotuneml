@@ -3,10 +3,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "tabularml"
-version = "0.2.1"
+name = "autotuneml"
+version = "0.2.2"
 authors = [{ name = "Julius Simonelli", email = "julius.simonelli@gmail.com" }]
-description = "A package for machine learning on tabular data"
+description = "A package for automated machine learning on tabular data"
 readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [
@@ -16,5 +16,5 @@ classifiers = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/jss367/tabularml"
-"Bug Tracker" = "https://github.com/jss367/tabularml/issues"
+"Homepage" = "https://github.com/jss367/autotuneml"
+"Bug Tracker" = "https://github.com/jss367/autotuneml/issues"
