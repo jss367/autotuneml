@@ -1,4 +1,4 @@
-# tabularml
+# TabularML
 
 Automated machine learning for tabular data.
 
