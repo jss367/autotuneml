@@ -14,8 +14,9 @@ from fastai.tabular.all import (
 )
 from fastai.tabular.all import accuracy as fai_accuracy
 from fastai.tabular.all import cont_cat_split, rmse, tabular_config, tabular_learner
-from log_config import logger
 from sklearn.metrics import accuracy_score, f1_score, mean_squared_error, r2_score
+
+from autotuneml.log_config import logger
 
 
 def load_and_prepare_fastai_data(

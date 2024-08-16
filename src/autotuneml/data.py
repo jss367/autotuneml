@@ -1,24 +1,12 @@
-import argparse
-import csv
-import os
-import sys
-from datetime import datetime
-from types import SimpleNamespace
-from typing import Any, Dict, Tuple, Union
+from typing import Tuple, Union
 
-import dill
-import joblib
-import optuna
 import pandas as pd
-import yaml
 from fastai.tabular.all import TabularPandas
-from hyperopt.pyll.base import scope
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
-from fastai_train import load_and_prepare_fastai_data, prepare_fastai_data, train_fastai_with_optuna
-from log_config import logger
-from skl_train import run_hyperopt, train_and_evaluate_best_params
+from autotuneml.fastai_train import prepare_fastai_data
+from autotuneml.log_config import logger
 
 
 def load_data(path):
@@ -104,12 +92,13 @@ def load_and_prepare_data(
 
     verify_dataset(train_df, target)
 
+    combined_df = pd.concat([train_df, test_df], ignore_index=True)
+
     if is_fastai:
-        return prepare_fastai_data(train_df, test_df, target, problem_type)
-    else:
-        X_train, X_test, y_train, y_test = extract_date_info(train_df, test_df, target)
-        y_train, y_test = encode(problem_type, y_train, y_test)
-        return X_train, X_test, y_train, y_test
+        return prepare_fastai_data(combined_df, target, problem_type)
+    X_train, X_test, y_train, y_test = extract_date_info(train_df, test_df, target)
+    y_train, y_test = encode(problem_type, y_train, y_test)
+    return X_train, X_test, y_train, y_test
 
 
 def verify_dataset(df, target):
