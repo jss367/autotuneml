@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "autotuneml"
-version = "0.3.1"
+version = "0.3.6"
 authors = [{ name = "Julius Simonelli", email = "julius.simonelli@gmail.com" }]
 description = "A package for automated machine learning on tabular data"
 readme = "README.md"
@@ -27,3 +27,9 @@ dependencies = [
 [project.urls]
 "Homepage" = "https://github.com/jss367/autotuneml"
 "Bug Tracker" = "https://github.com/jss367/autotuneml/issues"
+
+[tool.hatch.build]
+include = ["src/autotuneml/**/*.py", "configs/*.yaml"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/autotuneml"]
