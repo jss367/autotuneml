@@ -3,62 +3,15 @@ import csv
 import os
 import sys
 from datetime import datetime
-from types import SimpleNamespace
 from typing import Any, Dict
 
 import joblib
-import yaml
 
+from autotuneml.configs.config_class import Config, convert_to_config, load_config
 from autotuneml.data import load_and_prepare_data
 from autotuneml.fastai_train import load_and_prepare_fastai_data, train_fastai_with_optuna
 from autotuneml.log_config import logger
 from autotuneml.skl_train import run_hyperopt, train_and_evaluate_best_params
-
-
-class Config(SimpleNamespace):
-    def __init__(self, **kwargs):
-        for key, value in kwargs.items():
-            if isinstance(value, dict):
-                setattr(self, key, Config(**value))
-            else:
-                setattr(self, key, value)
-
-    def items(self):
-        return {k: v for k, v in self.__dict__.items() if not k.startswith('__')}.items()
-
-    def __getitem__(self, key):
-        return getattr(self, key)
-
-    def __setitem__(self, key, value):
-        setattr(self, key, value)
-
-    def get(self, key, default=None):
-        return getattr(self, key, default)
-
-    @classmethod
-    def from_dict(cls, data):
-        def convert(obj):
-            if isinstance(obj, dict):
-                return cls(**{k: convert(v) for k, v in obj.items()})
-            elif isinstance(obj, list):
-                return [convert(item) for item in obj]
-            return obj
-
-        return convert(data)
-
-
-def get_config_path(config_name):
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    src_dir = os.path.dirname(current_dir)
-    project_root = os.path.dirname(src_dir)
-    config_path = os.path.join(project_root, 'configs', config_name)
-    return config_path
-
-
-def load_config(path):
-    with open(path, 'r') as file:
-        config_dict = yaml.safe_load(file)
-    return Config.from_dict(config_dict)
 
 
 def save_results(results: Dict[str, Any], timestamp: str):
@@ -86,14 +39,16 @@ def run_autotuneml(data_path, target, run_config_path=None, optim_config_path=No
     if run_config_path:
         run_config = load_config(run_config_path)
     else:
-        default_config_path = get_config_path('run_config.yaml')
+        default_config_path = 'src/autotuneml/configs/pipeline_config.py'
         run_config = load_config(default_config_path)
+    run_config = convert_to_config(run_config.PipelineConfig)
 
     if optim_config_path:
         optim_config = load_config(optim_config_path)
     else:
-        default_optim_config_path = get_config_path('optimization_config.yaml')
+        default_optim_config_path = 'src/autotuneml/configs/optimization_config.py'
         optim_config = load_config(default_optim_config_path)
+    optim_config = convert_to_config(optim_config)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -161,7 +116,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Machine Learning Pipeline with Hyperparameter Optimization")
     parser.add_argument("--data_path", type=str, required=True, help="Path to the input CSV file")
     parser.add_argument("--target", type=str, required=True, help="Name of the target variable column")
-    parser.add_argument("--run_config_path", type=str, required=True, help="Path to the run configuration file")
+    parser.add_argument("--run_config_path", type=str, help="Path to the run configuration file")
     parser.add_argument("--optim_config_path", type=str, help="Path to the optimization configuration file")
 
     args = parser.parse_args()
