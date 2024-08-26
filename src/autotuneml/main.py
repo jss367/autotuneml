@@ -1,7 +1,6 @@
 import argparse
 import csv
-import importlib.util
-import inspect
+
 import os
 import sys
 from datetime import datetime
@@ -9,37 +8,11 @@ from typing import Any, Dict
 
 import joblib
 
-from autotuneml.configs.config_class import convert_to_config
+from autotuneml.configs.config_class import Config, convert_to_config, load_config
 from autotuneml.data import load_and_prepare_data
 from autotuneml.fastai_train import load_and_prepare_fastai_data, train_fastai_with_optuna
 from autotuneml.log_config import logger
 from autotuneml.skl_train import run_hyperopt, train_and_evaluate_best_params
-
-
-def load_config(file_path: str):
-    """
-    This loads all configuration classes from a Python file.
-    Returns a dictionary with class names as keys and class objects as values.
-    """
-    # Ensure the file exists
-    if not os.path.isfile(file_path):
-        raise FileNotFoundError(f"Configuration file {file_path} not found.")
-
-    # Extract the module name from the file path
-    module_name = os.path.splitext(os.path.basename(file_path))[0]
-
-    # Dynamically load the module from the provided file
-    spec = importlib.util.spec_from_file_location(module_name, file_path)
-    config_module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(config_module)
-
-    # Inspect the module for classes
-    config_classes = {}
-    for name, obj in inspect.getmembers(config_module, inspect.isclass):
-        if obj.__module__ == module_name:
-            config_classes[name] = obj
-
-    return config_classes
 
 
 def save_results(results: Dict[str, Any], timestamp: str):

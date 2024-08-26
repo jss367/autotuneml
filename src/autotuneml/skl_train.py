@@ -4,6 +4,7 @@ from typing import Any, Dict
 import numpy as np
 from fastai.tabular.all import tabular_learner
 from hyperopt import STATUS_FAIL, STATUS_OK, Trials, fmin, hp, space_eval, tpe
+from hyperopt.pyll import scope
 from hyperopt.pyll.base import scope
 from sklearn.metrics import accuracy_score, f1_score, mean_squared_error, r2_score
 
@@ -36,42 +37,70 @@ def train_model(params: Dict[str, Any], model_class, X_train, X_test, y_train, y
         return {'loss': np.inf, 'status': STATUS_FAIL, 'error': str(e)}
 
 
+# def convert_config_to_hyperopt_space(config_space):
+#     hyperopt_space = {}
+#     for param, value in config_space.items():
+#         logger.debug(f"Converting parameter: {param} with value: {value}")
+#         if isinstance(value, list):
+#             if len(value) == 2:
+#                 if all(isinstance(v, (int, float)) for v in value):
+#                     low, high = value
+#                     if low > high:
+#                         logger.warning(f"Invalid range for {param}: [{low}, {high}]. Swapping values.")
+#                         low, high = high, low
+#                 elif param == 'C':
+#                     # Ensure values are positive and convert to float
+#                     low, high = map(float, value)
+#                     hyperopt_space[param] = hp.loguniform(param, np.log(low), np.log(high))
+#                 elif all(isinstance(v, bool) for v in value):
+#                     hyperopt_space[param] = hp.choice(param, value)
+#                 elif all(isinstance(v, int) for v in value):
+#                     hyperopt_space[param] = scope.int(hp.quniform(param, low, high, 1))
+#                 elif all(isinstance(v, float) for v in value):
+#                     hyperopt_space[param] = hp.uniform(param, low, high)
+#             else:
+#                 # This handles categorical parameters like max_features and criterion
+#                 hyperopt_space[param] = hp.choice(param, value)
+#         elif isinstance(value, (int, float)):
+#             hyperopt_space[param] = value
+#         elif isinstance(value, bool):
+#             hyperopt_space[param] = value
+#         else:
+#             # For parameters that don't fit into the above categories (e.g., strings)
+#             hyperopt_space[param] = hp.choice(param, [value])
+
+#         if param in hyperopt_space:
+#             logger.debug(f"Converted {param} to: {hyperopt_space[param]}")
+#         else:
+#             logger.debug(f"Parameter {param} was not added to hyperopt_space")
+
+#     return hyperopt_space
+
+
 def convert_config_to_hyperopt_space(config_space):
     hyperopt_space = {}
     for param, value in config_space.items():
         logger.debug(f"Converting parameter: {param} with value: {value}")
         if isinstance(value, list):
-            if len(value) == 2:
-                if all(isinstance(v, (int, float)) for v in value):
-                    low, high = value
-                    if low > high:
-                        logger.warning(f"Invalid range for {param}: [{low}, {high}]. Swapping values.")
-                        low, high = high, low
-                elif param == 'C':
-                    # Ensure values are positive and convert to float
-                    low, high = map(float, value)
-                    hyperopt_space[param] = hp.loguniform(param, np.log(low), np.log(high))
-                elif all(isinstance(v, bool) for v in value):
-                    hyperopt_space[param] = hp.choice(param, value)
-                elif all(isinstance(v, int) for v in value):
+            if len(value) == 2 and all(isinstance(v, (int, float)) for v in value):
+                low, high = value
+                if low > high:
+                    logger.warning(f"Invalid range for {param}: [{low}, {high}]. Swapping values.")
+                    low, high = high, low
+                if all(isinstance(v, int) for v in value):
                     hyperopt_space[param] = scope.int(hp.quniform(param, low, high, 1))
-                elif all(isinstance(v, float) for v in value):
+                elif param == 'lr' or param == 'weight_decay':
+                    hyperopt_space[param] = hp.loguniform(param, np.log(low), np.log(high))
+                else:
                     hyperopt_space[param] = hp.uniform(param, low, high)
             else:
-                # This handles categorical parameters like max_features and criterion
                 hyperopt_space[param] = hp.choice(param, value)
-        elif isinstance(value, (int, float)):
-            hyperopt_space[param] = value
-        elif isinstance(value, bool):
+        elif isinstance(value, (int, float, bool)):
             hyperopt_space[param] = value
         else:
-            # For parameters that don't fit into the above categories (e.g., strings)
             hyperopt_space[param] = hp.choice(param, [value])
 
-        if param in hyperopt_space:
-            logger.debug(f"Converted {param} to: {hyperopt_space[param]}")
-        else:
-            logger.debug(f"Parameter {param} was not added to hyperopt_space")
+        logger.debug(f"Converted {param} to: {hyperopt_space[param]}")
 
     return hyperopt_space
 
@@ -98,11 +127,11 @@ def run_hyperopt(
     model_name: str, X_train, y_train, X_test, y_test, problem_type: str, num_trials: int = 50, optim_config=None
 ):
     logger.info("Starting Hyperopt optimization for %s", model_name)
-    model_info = optim_config.model_spaces[model_name]
+    # model_info = optim_config.model_spaces[model_name]
     trials = Trials()
 
     # Convert the config space to Hyperopt space
-    hyperopt_space = convert_config_to_hyperopt_space(model_info.hyperopt_space)
+    hyperopt_space = convert_config_to_hyperopt_space(optim_config.hyperopt_space)
 
     def objective(params):
         try:
@@ -162,7 +191,7 @@ def train_and_evaluate_best_params(
     model_name: str, best_hyperparams: Dict[str, Any], X_train, y_train, X_test, y_test, problem_type: str, optim_config
 ):
     logger.info(f"Training final {model_name} model with best hyperparameters")
-    model_info = optim_config.model_spaces[model_name]
+    # model_info = optim_config.model_spaces[model_name]
 
     # Filter out hyperparameters that are not applicable to the specific model
     model_class = get_model_class(model_name, problem_type)
