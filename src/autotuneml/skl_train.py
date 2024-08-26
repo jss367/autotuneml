@@ -96,7 +96,9 @@ def convert_config_to_hyperopt_space(config_space):
                 if low > high:
                     logger.warning(f"Invalid range for {param}: [{low}, {high}]. Swapping values.")
                     low, high = high, low
-                if all(isinstance(v, int) for v in value):
+                if all(isinstance(x, bool) for x in value):
+                    hyperopt_space[param] = hp.choice(param, value)
+                elif all(isinstance(v, int) for v in value):
                     hyperopt_space[param] = scope.int(hp.quniform(param, low, high, 1))
                 elif param == 'lr' or param == 'weight_decay':
                     hyperopt_space[param] = hp.loguniform(param, np.log(low), np.log(high))

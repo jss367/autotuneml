@@ -86,6 +86,42 @@ class ConfigWithImports:
     assert config.ConfigWithImports.param == os.path.join('path', 'to', 'file')
 
 
+@pytest.fixture
+def test_fixture_random_forest(tmp_path):
+    content = """
+class RandomForestConfig:
+    hyperopt_space = {
+        "n_estimators": [10, 700],
+        "max_depth": [1, 100],
+        "min_samples_split": [2, 20],
+        "min_samples_leaf": [1, 10],
+        "max_features": ["sqrt", "log2"],
+        "random_state": 42,
+        "criterion": ["gini", "entropy"],
+        "min_weight_fraction_leaf": [0, 0.5],
+        "bootstrap": [False, True],
+    }
+"""
+    config_file = tmp_path / "multi_model_config.py"
+    config_file.write_text(content)
+    return str(config_file)
+
+
+def test_random_forest_config(test_fixture_random_forest):
+    config = load_config(test_fixture_random_forest)
+
+    assert isinstance(config, Config)
+
+    # Check RandomForestConfig
+    assert hasattr(config, 'RandomForestConfig')
+    assert isinstance(config.RandomForestConfig, Config)
+    assert hasattr(config.RandomForestConfig, 'hyperopt_space')
+    assert config.RandomForestConfig.hyperopt_space['bootstrap'] == [False, True]
+    assert config.RandomForestConfig.hyperopt_space['n_estimators'] == [10, 700]
+    assert config.RandomForestConfig.hyperopt_space['max_features'] == ["sqrt", "log2"]
+    assert config.RandomForestConfig.hyperopt_space['random_state'] == 42
+
+
 @pytest.mark.skip(reason="Skipping this test for now")
 def test_config_with_complex_types(temp_config_file):
     content = """

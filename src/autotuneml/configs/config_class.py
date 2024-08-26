@@ -42,31 +42,6 @@ def convert_to_config(cls):
     )
 
 
-# def load_config(file_path: str) -> Config:
-#     """
-#     This loads all configuration classes from a Python file.
-#     Returns a Config object.
-#     """
-#     # Ensure the file exists
-#     if not os.path.isfile(file_path):
-#         raise FileNotFoundError(f"Configuration file {file_path} not found.")
-
-#     # Extract the module name from the file path
-#     module_name = os.path.splitext(os.path.basename(file_path))[0]
-
-#     # Dynamically load the module from the provided file
-#     spec = importlib.util.spec_from_file_location(module_name, file_path)
-#     config_module = importlib.util.module_from_spec(spec)
-#     spec.loader.exec_module(config_module)
-
-#     # Find the first class in the module and convert it to a Config object
-#     for name, obj in inspect.getmembers(config_module, inspect.isclass):
-#         if obj.__module__ == module_name:
-#             return convert_to_config(obj)
-
-#     raise ValueError(f"No configuration class found in {file_path}")
-
-
 def load_config(file_path: str) -> Config:
     """
     This loads all configuration classes from a Python file.
