@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "autotuneml"
-version = "0.4.0"
+version = "0.4.1"
 authors = [{ name = "Julius Simonelli", email = "julius.simonelli@gmail.com" }]
 description = "A package for automated machine learning on tabular data"
 readme = "README.md"
