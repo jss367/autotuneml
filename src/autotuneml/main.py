@@ -15,9 +15,10 @@ from autotuneml.skl_train import run_hyperopt, train_and_evaluate_best_params
 from autotuneml.version import __version__
 
 
-def save_results(results: Dict[str, Any], timestamp: str):
-    os.makedirs('results', exist_ok=True)
-    filename = f"results/{results['model']}_results_{timestamp}.csv"
+def save_results(results: Dict[str, Any], timestamp: str, save_dir: str):
+    results_dir = os.path.join(save_dir, 'results')
+    os.makedirs(results_dir, exist_ok=True)
+    filename = os.path.join(results_dir, f"{results['model']}_results_{timestamp}.csv")
     try:
         logger.info(f"Saving results to {filename}")
         with open(filename, 'w', newline='') as csvfile:
@@ -29,14 +30,15 @@ def save_results(results: Dict[str, Any], timestamp: str):
         logger.error(f"Error saving results to {filename}: {str(e)}")
 
 
-def save_model(model, model_name: str, timestamp: str):
-    os.makedirs('models', exist_ok=True)
-    model_filename = f'models/best_{model_name.lower()}_{timestamp}.joblib'
+def save_model(model, model_name: str, timestamp: str, save_dir: str):
+    models_dir = os.path.join(save_dir, 'models')
+    os.makedirs(models_dir, exist_ok=True)
+    model_filename = os.path.join(models_dir, f'best_{model_name.lower()}_{timestamp}.joblib')
     joblib.dump(model, model_filename)
     logger.info(f"Model saved successfully to {model_filename}")
 
 
-def run_autotuneml(data_path, target, run_config_path=None, optim_config_path=None):
+def run_autotuneml(data_path, target, save_dir, run_config_path=None, optim_config_path=None):
     logger.info(f"Starting autotuneml v{__version__})")
     if run_config_path:
         run_config = load_config(run_config_path)
@@ -94,11 +96,13 @@ def run_autotuneml(data_path, target, run_config_path=None, optim_config_path=No
                     optim_config,
                 )
 
-            save_results(model_results, timestamp)
-            save_model(model, model_name, timestamp)
+            save_results(model_results, timestamp, save_dir)
+            save_model(model, model_name, timestamp, save_dir)
             results[model_name] = model_results
 
-            logger.info(f"Best {model_name} model has been saved in the 'models' directory.")
+            logger.info(
+                f"Best {model_name} model has been saved in the '{os.path.join(save_dir, 'models')}' directory."
+            )
         except Exception as e:
             _, _, exc_tb = sys.exc_info()
             file_name = exc_tb.tb_frame.f_code.co_filename
@@ -111,15 +115,16 @@ def run_autotuneml(data_path, target, run_config_path=None, optim_config_path=No
 
 
 def main(args):
-    return run_autotuneml(args.data_path, args.target, args.run_config_path)
+    return run_autotuneml(args.data_path, args.target, args.save_dir, args.run_config_path, args.optim_config_path)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Machine Learning Pipeline with Hyperparameter Optimization")
     parser.add_argument("--data_path", type=str, required=True, help="Path to the input CSV file")
     parser.add_argument("--target", type=str, required=True, help="Name of the target variable column")
+    parser.add_argument("--save_dir", type=str, default=".", help="Directory to save results and models")
     parser.add_argument("--run_config_path", type=str, help="Path to the run configuration file")
     parser.add_argument("--optim_config_path", type=str, help="Path to the optimization configuration file")
 
     args = parser.parse_args()
-    run_autotuneml(args.data_path, args.target, args.run_config_path, args.optim_config_path)
+    run_autotuneml(args.data_path, args.target, args.save_dir, args.run_config_path, args.optim_config_path)
