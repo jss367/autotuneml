@@ -11,7 +11,18 @@ from autotuneml.log_config import logger
 
 def load_data(path):
     logger.info(f"Loading data from {path}")
-    df = pd.read_csv(path, parse_dates=['Date'])
+
+    # First, read the CSV without parsing dates
+    df = pd.read_csv(path)
+
+    # Check if 'Date' column exists
+    if 'Date' in df.columns:
+        # If it exists, parse it as date
+        df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+    else:
+        # If it doesn't exist, throw a warning
+        logger.warning("No 'Date' column in CSV file.")
+
     logger.info(f"Raw data shape: {df.shape}")
     return df
 
@@ -96,7 +107,15 @@ def load_and_prepare_data(
 
     if is_fastai:
         return prepare_fastai_data(combined_df, target, problem_type)
-    X_train, X_test, y_train, y_test = extract_date_info(train_df, test_df, target)
+
+    if "Date" in train_df.columns:
+        X_train, X_test, y_train, y_test = extract_date_info(train_df, test_df, target)
+    else:
+        X_train = train_df.drop(columns=[target])
+        X_test = test_df.drop(columns=[target])
+        y_train = train_df[target]
+        y_test = test_df[target]
+
     y_train, y_test = encode(problem_type, y_train, y_test)
     return X_train, X_test, y_train, y_test
 

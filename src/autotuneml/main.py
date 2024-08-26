@@ -7,11 +7,12 @@ from typing import Any, Dict
 
 import joblib
 
-from autotuneml.configs.config_class import Config, convert_to_config, load_config
+from autotuneml.configs.config_class import convert_to_config, load_config
 from autotuneml.data import load_and_prepare_data
 from autotuneml.fastai_train import load_and_prepare_fastai_data, train_fastai_with_optuna
 from autotuneml.log_config import logger
 from autotuneml.skl_train import run_hyperopt, train_and_evaluate_best_params
+from autotuneml.version import __version__
 
 
 def save_results(results: Dict[str, Any], timestamp: str):
@@ -36,6 +37,7 @@ def save_model(model, model_name: str, timestamp: str):
 
 
 def run_autotuneml(data_path, target, run_config_path=None, optim_config_path=None):
+    logger.info(f"Starting autotuneml v{__version__})")
     if run_config_path:
         run_config = load_config(run_config_path)
     else:
