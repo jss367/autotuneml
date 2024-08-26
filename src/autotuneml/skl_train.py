@@ -16,7 +16,6 @@ MODEL_CONFIG_MAP = {
     "random_forest": "RandomForestConfig",
     "linear": "LinearConfig",
     "fastai_tabular": "FastaiTabularConfig",
-    # Add more mappings as needed
 }
 
 
@@ -46,64 +45,27 @@ def train_model(params: Dict[str, Any], model_class, X_train, X_test, y_train, y
         return {'loss': np.inf, 'status': STATUS_FAIL, 'error': str(e)}
 
 
-# def convert_config_to_hyperopt_space(config_space):
-#     hyperopt_space = {}
-#     for param, value in config_space.items():
-#         logger.debug(f"Converting parameter: {param} with value: {value}")
-#         if isinstance(value, list):
-#             if len(value) == 2:
-#                 if all(isinstance(v, (int, float)) for v in value):
-#                     low, high = value
-#                     if low > high:
-#                         logger.warning(f"Invalid range for {param}: [{low}, {high}]. Swapping values.")
-#                         low, high = high, low
-#                 elif param == 'C':
-#                     # Ensure values are positive and convert to float
-#                     low, high = map(float, value)
-#                     hyperopt_space[param] = hp.loguniform(param, np.log(low), np.log(high))
-#                 elif all(isinstance(v, bool) for v in value):
-#                     hyperopt_space[param] = hp.choice(param, value)
-#                 elif all(isinstance(v, int) for v in value):
-#                     hyperopt_space[param] = scope.int(hp.quniform(param, low, high, 1))
-#                 elif all(isinstance(v, float) for v in value):
-#                     hyperopt_space[param] = hp.uniform(param, low, high)
-#             else:
-#                 # This handles categorical parameters like max_features and criterion
-#                 hyperopt_space[param] = hp.choice(param, value)
-#         elif isinstance(value, (int, float)):
-#             hyperopt_space[param] = value
-#         elif isinstance(value, bool):
-#             hyperopt_space[param] = value
-#         else:
-#             # For parameters that don't fit into the above categories (e.g., strings)
-#             hyperopt_space[param] = hp.choice(param, [value])
-
-#         if param in hyperopt_space:
-#             logger.debug(f"Converted {param} to: {hyperopt_space[param]}")
-#         else:
-#             logger.debug(f"Parameter {param} was not added to hyperopt_space")
-
-#     return hyperopt_space
-
-
 def convert_config_to_hyperopt_space(config_space):
     hyperopt_space = {}
     for param, value in config_space.items():
         logger.debug(f"Converting parameter: {param} with value: {value}")
         if isinstance(value, list):
-            if len(value) == 2 and all(isinstance(v, (int, float)) for v in value):
-                low, high = value
-                if low > high:
-                    logger.warning(f"Invalid range for {param}: [{low}, {high}]. Swapping values.")
-                    low, high = high, low
-                if all(isinstance(x, bool) for x in value):
+            if len(value) == 2:
+                if all(isinstance(v, bool) for v in value):
                     hyperopt_space[param] = hp.choice(param, value)
-                elif all(isinstance(v, int) for v in value):
-                    hyperopt_space[param] = scope.int(hp.quniform(param, low, high, 1))
-                elif param == 'lr' or param == 'weight_decay':
-                    hyperopt_space[param] = hp.loguniform(param, np.log(low), np.log(high))
+                elif all(isinstance(v, (int, float)) for v in value):
+                    low, high = value
+                    if low > high:
+                        logger.warning(f"Invalid range for {param}: [{low}, {high}]. Swapping values.")
+                        low, high = high, low
+                    if all(isinstance(v, int) for v in value):
+                        hyperopt_space[param] = scope.int(hp.quniform(param, low, high, 1))
+                    elif param in ['lr', 'weight_decay']:
+                        hyperopt_space[param] = hp.loguniform(param, np.log(low), np.log(high))
+                    else:
+                        hyperopt_space[param] = hp.uniform(param, low, high)
                 else:
-                    hyperopt_space[param] = hp.uniform(param, low, high)
+                    hyperopt_space[param] = hp.choice(param, value)
             else:
                 hyperopt_space[param] = hp.choice(param, value)
         elif isinstance(value, (int, float, bool)):
