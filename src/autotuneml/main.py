@@ -1,6 +1,5 @@
 import argparse
 import csv
-
 import os
 import sys
 from datetime import datetime
@@ -42,7 +41,7 @@ def run_autotuneml(data_path, target, run_config_path=None, optim_config_path=No
     else:
         default_config_path = 'src/autotuneml/configs/pipeline_config.py'
         run_config = load_config(default_config_path)
-    run_config = convert_to_config(run_config)
+    run_config = convert_to_config(run_config.PipelineConfig)
 
     if optim_config_path:
         optim_config = load_config(optim_config_path)

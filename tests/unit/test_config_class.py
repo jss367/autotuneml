@@ -24,8 +24,8 @@ class TestConfig:
     file_path = temp_config_file(content)
     config = load_config(file_path)
     assert isinstance(config, Config)
-    assert config.param1 == 'value1'
-    assert config.param2 == 42
+    assert config.TestConfig.param1 == 'value1'
+    assert config.TestConfig.param2 == 42
 
 
 def test_multiple_config_classes(temp_config_file):
@@ -42,9 +42,9 @@ class Config3:
     file_path = temp_config_file(content)
     config = load_config(file_path)
     assert isinstance(config, Config)
-    assert config.param1 == 'value1'
-    assert config.param2 == 42
-    assert config.param3 == [1, 2, 3]
+    assert config.Config1.param1 == 'value1'
+    assert config.Config2.param2 == 42
+    assert config.Config3.param3 == [1, 2, 3]
 
 
 def test_config_with_methods(temp_config_file):
@@ -57,7 +57,7 @@ class ConfigWithMethods:
     file_path = temp_config_file(content)
     config = load_config(file_path)
     assert isinstance(config, Config)
-    assert config.param == 'value'
+    assert config.ConfigWithMethods.param == 'value'
     assert not hasattr(config, 'method')
 
 
@@ -83,7 +83,7 @@ class ConfigWithImports:
     file_path = temp_config_file(content)
     config = load_config(file_path)
     assert isinstance(config, Config)
-    assert config.param == os.path.join('path', 'to', 'file')
+    assert config.ConfigWithImports.param == os.path.join('path', 'to', 'file')
 
 
 @pytest.mark.skip(reason="Skipping this test for now")
@@ -165,36 +165,39 @@ def test_load_multi_model_config(temp_multi_model_config_file):
     assert isinstance(config, Config)
 
     # Check XGBoostConfig
-    assert hasattr(config, 'XGBoostConfig_hyperopt_space')
-    assert config.XGBoostConfig_hyperopt_space['max_depth'] == [3, 18]
-    assert config.XGBoostConfig_hyperopt_space['gamma'] == [1, 9]
-    assert config.XGBoostConfig_hyperopt_space['seed'] == 0
+    assert hasattr(config, 'XGBoostConfig')
+    assert isinstance(config.XGBoostConfig, Config)
+    assert hasattr(config.XGBoostConfig, 'hyperopt_space')
+    assert config.XGBoostConfig.hyperopt_space['max_depth'] == [3, 18]
+    assert config.XGBoostConfig.hyperopt_space['gamma'] == [1, 9]
+    assert config.XGBoostConfig.hyperopt_space['seed'] == 0
 
     # Check RandomForestConfig
-    assert hasattr(config, 'RandomForestConfig_hyperopt_space')
-    assert config.RandomForestConfig_hyperopt_space['n_estimators'] == [10, 700]
-    assert config.RandomForestConfig_hyperopt_space['max_features'] == ["sqrt", "log2"]
-    assert config.RandomForestConfig_hyperopt_space['random_state'] == 42
+    assert hasattr(config, 'RandomForestConfig')
+    assert isinstance(config.RandomForestConfig, Config)
+    assert hasattr(config.RandomForestConfig, 'hyperopt_space')
+    assert config.RandomForestConfig.hyperopt_space['n_estimators'] == [10, 700]
+    assert config.RandomForestConfig.hyperopt_space['max_features'] == ["sqrt", "log2"]
+    assert config.RandomForestConfig.hyperopt_space['random_state'] == 42
 
     # Check LinearConfig
-    assert hasattr(config, 'LinearConfig_hyperopt_space')
-    assert config.LinearConfig_hyperopt_space['C'] == [1e-4, 1e4]
-    assert config.LinearConfig_hyperopt_space['penalty'] == ["l1", "l2"]
-    assert config.LinearConfig_hyperopt_space['class_weight'] == [None, "balanced"]
+    assert hasattr(config, 'LinearConfig')
+    assert isinstance(config.LinearConfig, Config)
+    assert hasattr(config.LinearConfig, 'hyperopt_space')
+    assert config.LinearConfig.hyperopt_space['C'] == [1e-4, 1e4]
+    assert config.LinearConfig.hyperopt_space['penalty'] == ["l1", "l2"]
+    assert config.LinearConfig.hyperopt_space['class_weight'] == [None, "balanced"]
 
     # Check FastaiTabularConfig
-    assert hasattr(config, 'FastaiTabularConfig_hyperopt_space')
-    assert config.FastaiTabularConfig_hyperopt_space['n_layers'] == [1, 5]
-    assert config.FastaiTabularConfig_hyperopt_space['bs'] == [16, 32, 64, 128, 256]
-    assert config.FastaiTabularConfig_hyperopt_space['lr'] == [1e-5, 1e-1]
+    assert hasattr(config, 'FastaiTabularConfig')
+    assert isinstance(config.FastaiTabularConfig, Config)
+    assert hasattr(config.FastaiTabularConfig, 'hyperopt_space')
+    assert config.FastaiTabularConfig.hyperopt_space['n_layers'] == [1, 5]
+    assert config.FastaiTabularConfig.hyperopt_space['bs'] == [16, 32, 64, 128, 256]
+    assert config.FastaiTabularConfig.hyperopt_space['lr'] == [1e-5, 1e-1]
 
     # Check that no extra attributes are present
-    expected_attributes = {
-        'XGBoostConfig_hyperopt_space',
-        'RandomForestConfig_hyperopt_space',
-        'LinearConfig_hyperopt_space',
-        'FastaiTabularConfig_hyperopt_space',
-    }
+    expected_attributes = {'XGBoostConfig', 'RandomForestConfig', 'LinearConfig', 'FastaiTabularConfig'}
     actual_attributes = set(vars(config).keys())
     assert actual_attributes == expected_attributes, f"Unexpected attributes: {actual_attributes - expected_attributes}"
 

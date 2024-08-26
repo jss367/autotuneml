@@ -70,7 +70,7 @@ def convert_to_config(cls):
 def load_config(file_path: str) -> Config:
     """
     This loads all configuration classes from a Python file.
-    Returns a composite Config object.
+    Returns a composite Config object with nested Config objects for each class.
     """
     if not os.path.isfile(file_path):
         raise FileNotFoundError(f"Configuration file {file_path} not found.")
@@ -85,7 +85,7 @@ def load_config(file_path: str) -> Config:
     for name, obj in inspect.getmembers(config_module, inspect.isclass):
         if obj.__module__ == module_name:
             class_config = convert_to_config(obj)
-            composite_config.update(class_config.__dict__)
+            composite_config[name] = class_config
 
     if not composite_config:
         raise ValueError(f"No configuration classes found in {file_path}")

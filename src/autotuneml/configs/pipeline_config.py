@@ -1,7 +1,7 @@
 class PipelineConfig:
     # Model Selection
-    models = ["xgboost"]
-    # models = ["xgboost", "random_forest", "linear"]  # Add "fastai_tabular" if needed
+    # models = ["xgboost"]
+    models = ["xgboost", "random_forest", "linear"]  # Add "fastai_tabular" if needed
 
     # Hyperparameter Optimization
     num_trials = 20

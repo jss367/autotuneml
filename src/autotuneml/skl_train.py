@@ -8,7 +8,16 @@ from hyperopt.pyll import scope
 from hyperopt.pyll.base import scope
 from sklearn.metrics import accuracy_score, f1_score, mean_squared_error, r2_score
 
+from autotuneml.configs.config_class import Config
 from autotuneml.log_config import logger
+
+MODEL_CONFIG_MAP = {
+    "xgboost": "XGBoostConfig",
+    "random_forest": "RandomForestConfig",
+    "linear": "LinearConfig",
+    "fastai_tabular": "FastaiTabularConfig",
+    # Add more mappings as needed
+}
 
 
 def train_model(params: Dict[str, Any], model_class, X_train, X_test, y_train, y_test, problem_type: str):
@@ -130,8 +139,19 @@ def run_hyperopt(
     # model_info = optim_config.model_spaces[model_name]
     trials = Trials()
 
+    model_config_name = MODEL_CONFIG_MAP.get(model_name.lower())
+    if model_config_name is None:
+        raise ValueError(f"Configuration for model '{model_name}' not found in MODEL_CONFIG_MAP")
+
+    try:
+        model_config = getattr(optim_config, model_config_name)
+        if not isinstance(model_config, Config):
+            raise AttributeError
+    except AttributeError:
+        raise ValueError(f"Configuration '{model_config_name}' not found in optim_config")
+
     # Convert the config space to Hyperopt space
-    hyperopt_space = convert_config_to_hyperopt_space(optim_config.hyperopt_space)
+    hyperopt_space = convert_config_to_hyperopt_space(model_config.hyperopt_space)
 
     def objective(params):
         try:
