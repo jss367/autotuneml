@@ -38,7 +38,7 @@ def save_model(model, model_name: str, timestamp: str, save_dir: str):
     logger.info(f"Model saved successfully to {model_filename}")
 
 
-def run_autotuneml(data_path, target, save_dir, run_config_path=None, optim_config_path=None):
+def run_autotuneml(data_path, target, run_config_path=None, optim_config_path=None, save_dir="."):
     logger.info(f"Starting autotuneml v{__version__})")
     if run_config_path:
         run_config = load_config(run_config_path)
@@ -115,7 +115,7 @@ def run_autotuneml(data_path, target, save_dir, run_config_path=None, optim_conf
 
 
 def main(args):
-    return run_autotuneml(args.data_path, args.target, args.save_dir, args.run_config_path, args.optim_config_path)
+    return run_autotuneml(args.data_path, args.target, args.run_config_path, args.optim_config_path, args.save_dir)
 
 
 if __name__ == "__main__":
@@ -127,4 +127,4 @@ if __name__ == "__main__":
     parser.add_argument("--optim_config_path", type=str, help="Path to the optimization configuration file")
 
     args = parser.parse_args()
-    run_autotuneml(args.data_path, args.target, args.save_dir, args.run_config_path, args.optim_config_path)
+    run_autotuneml(args.data_path, args.target, args.run_config_path, args.optim_config_path, args.save_dir)

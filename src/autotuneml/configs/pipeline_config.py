@@ -10,7 +10,8 @@ class PipelineConfig:
     # Data Splitting
     test_size = 0.25
     random_state = 42
-    split_method = "random"  # or "date"
+    # split_method = "random"  # or "date"
+    split_method = "date"
 
     # Problem Type
     problem_type = "classification"  # or "regression"

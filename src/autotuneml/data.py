@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from typing import Union
 
 import pandas as pd
 from fastai.tabular.all import TabularPandas
@@ -48,38 +48,6 @@ def load_and_split_data(
     return train_df, test_df
 
 
-def extract_date_info(
-    train_df: pd.DataFrame,
-    test_df: pd.DataFrame,
-    target: str,
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
-    # Convert 'Date' column to datetime if it's not already
-    train_df['Date'] = pd.to_datetime(train_df['Date'])
-    test_df['Date'] = pd.to_datetime(test_df['Date'])
-
-    # Extract date features
-    for df in [train_df, test_df]:
-        df['Year'] = df['Date'].dt.year
-        df['Month'] = df['Date'].dt.month
-        df['Day'] = df['Date'].dt.day
-        df['DayOfWeek'] = df['Date'].dt.dayofweek
-        df['Quarter'] = df['Date'].dt.quarter
-        df['IsWeekend'] = df['Date'].dt.dayofweek.isin([5, 6]).astype(int)
-        df['DayOfYear'] = df['Date'].dt.dayofyear
-        df['WeekOfYear'] = df['Date'].dt.isocalendar().week
-
-        df['IsMonthStart'] = df['Date'].dt.is_month_start.astype(int)
-        df['IsMonthEnd'] = df['Date'].dt.is_month_end.astype(int)
-
-    # Drop the original 'Date' column
-    X_train = train_df.drop([target, 'Date'], axis=1)
-    X_test = test_df.drop([target, 'Date'], axis=1)
-    y_train = train_df[target]
-    y_test = test_df[target]
-
-    return X_train, X_test, y_train, y_test
-
-
 def encode(problem_type: str, y_train, y_test):
     if problem_type == 'classification':
         le = LabelEncoder()
@@ -97,7 +65,7 @@ def load_and_prepare_data(
     random_state: int = 42,
     is_fastai: bool = False,
 ) -> Union[
-    Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series], Tuple[TabularPandas, TabularPandas, pd.Series, pd.Series]
+    tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series], tuple[TabularPandas, TabularPandas, pd.Series, pd.Series]
 ]:
     train_df, test_df = load_and_split_data(path, split_method, test_size, random_state)
 
@@ -109,12 +77,13 @@ def load_and_prepare_data(
         return prepare_fastai_data(combined_df, target, problem_type)
 
     if "Date" in train_df.columns:
-        X_train, X_test, y_train, y_test = extract_date_info(train_df, test_df, target)
-    else:
-        X_train = train_df.drop(columns=[target])
-        X_test = test_df.drop(columns=[target])
-        y_train = train_df[target]
-        y_test = test_df[target]
+        train_df = train_df.drop(columns="Date")
+        test_df = test_df.drop(columns="Date")
+
+    X_train = train_df.drop(columns=[target])
+    X_test = test_df.drop(columns=[target])
+    y_train = train_df[target]
+    y_test = test_df[target]
 
     y_train, y_test = encode(problem_type, y_train, y_test)
     return X_train, X_test, y_train, y_test
